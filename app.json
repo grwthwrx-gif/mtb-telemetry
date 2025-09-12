@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "MTB Telemetry",
+    "slug": "mtb-telemetry",
+    "version": "1.0.2",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "mtbtelemetry",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.grwthwrx.mtbtelemetry",
+      "buildNumber": "4"
+    },
+    "android": {
+      "package": "com.grwthwrx.mtbtelemetry",
+      "versionCode": 4
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

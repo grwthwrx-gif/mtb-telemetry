@@ -1,0 +1,25 @@
+{
+  "name": "mtb-telemetry",
+  "version": "1.0.2",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start --tunnel",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~5.0.4",
+    "expo-status-bar": "~2.2.3",
+    "metro": "^0.82.5",
+    "metro-config": "^0.82.5",
+    "metro-resolver": "^0.82.5",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-web": "^0.20.0"
+  },
+  "devDependencies": {
+    "expo": "~53.0.22"
+  }
+}
