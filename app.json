@@ -2,7 +2,7 @@
   "expo": {
     "name": "MTB Telemetry",
     "slug": "mtb-telemetry",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "mtbtelemetry",
@@ -15,14 +15,22 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.grwthwrx.mtbtelemetry",
-      "buildNumber": "6"
+      "buildNumber": "7",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.grwthwrx.mtbtelemetry",
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "23c8c4dd-8c23-4489-aa30-4ea549424045"
+      }
     }
   }
 }
