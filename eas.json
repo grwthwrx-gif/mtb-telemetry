@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "version": ">= 13.0.0"
+  },
+"build": {
+    "development": {
+      "distribution": "internal"
+'ios': {
+'simulator': true
+}
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "ios": {
+        "autoincrement': 'buildnumber'
+      }
+    },
+'submit': {
+'production': {}
+}
+}
+  },
+  "submit": {
+    "production": {}
+  }
+}
