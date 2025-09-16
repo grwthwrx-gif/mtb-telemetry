@@ -11,8 +11,5 @@
       "package": "com.yourcompany.mtbtelemetry",
       "versionCode": 1
     },
-    "plugins": [
-      "expo-version"
-    ]
   }
 }
