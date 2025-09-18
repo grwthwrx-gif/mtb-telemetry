@@ -1,11 +1,42 @@
+import React from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+
+export default function EntryScreen({ onSelect }) {
+  return (
+    <LinearGradient colors={["#0A0F1C", "#1B2A41"]} style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Choose Your Session</Text>
+        <Text style={styles.subtitle}>
+          Ride solo or compare runs with your crew
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.button, styles.individual]}
+          onPress={() => onSelect("individual")}
+        >
+          <Text style={styles.buttonText}>🚴 Individual</
+
+
+cd ~/mtb-telemetry
+
+# Make sure screens folder exists
+mkdir -p screens
+
+# Create EntryScreen.js
+cat > screens/EntryScreen.js << 'EOF'
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors } from '../theme';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function EntryScreen({ navigation }) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Choose Session Type</Text>
+    <LinearGradient
+      colors={['#0f0c29', '#302b63', '#24243e']}
+      style={styles.container}
+    >
+      <Text style={styles.title}>MTB Telemetry</Text>
+      <Text style={styles.subtitle}>Choose your session type</Text>
 
       <TouchableOpacity
         style={styles.button}
@@ -15,49 +46,50 @@ export default function EntryScreen({ navigation }) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.button, styles.groupButton]}
+        style={[styles.button, styles.altButton]}
         onPress={() => navigation.navigate('CompareVideos')}
       >
         <Text style={styles.buttonText}>Group Session</Text>
       </TouchableOpacity>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 40,
-    textShadowColor: colors.secondary,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 12,
+    color: '#fff',
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: '#ccc',
+    marginBottom: 30,
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#ff6f61',
     paddingVertical: 15,
     paddingHorizontal: 40,
     borderRadius: 12,
-    marginBottom: 20,
-    shadowColor: colors.secondary,
-    shadowOpacity: 0.6,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 15,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  groupButton: {
-    backgroundColor: colors.secondary,
+  altButton: {
+    backgroundColor: '#1db954',
   },
   buttonText: {
     fontSize: 18,
+    color: '#fff',
     fontWeight: '600',
-    color: colors.background,
   },
 });
