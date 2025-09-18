@@ -5,11 +5,19 @@
     "version": "1.0.0",
     "ios": {
       "bundleIdentifier": "com.yourcompany.mtbtelemetry",
-      "buildNumber": "1"
+      "buildNumber": "3"
     },
     "android": {
       "package": "com.yourcompany.mtbtelemetry",
       "versionCode": 1
     },
+    "splash": {
+      "image": "./assets/splash_dark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ]
   }
 }
