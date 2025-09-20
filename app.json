@@ -3,18 +3,12 @@
     "name": "mtb-telemetry",
     "slug": "mtb-telemetry",
     "version": "1.0.0",
-    "ios": {
-      "bundleIdentifier": "com.yourcompany.mtbtelemetry",
-      "buildNumber": "3"
-    },
-    "android": {
-      "package": "com.yourcompany.mtbtelemetry",
-      "versionCode": 1
-    },
+    "orientation": "portrait",
     "splash": {
       "image": "./assets/splash_dark.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D0D0D"
+      "backgroundColor": "#0B0C10",
+      "fadeDuration": 1000
     },
     "assetBundlePatterns": [
       "**/*"
