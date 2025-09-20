@@ -3,15 +3,31 @@
     "name": "mtb-telemetry",
     "slug": "mtb-telemetry",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "com.yourcompany.mtbtelemetry",
+      "buildNumber": "4"
+    },
+    "android": {
+      "package": "com.yourcompany.mtbtelemetry",
+      "versionCode": 2
+    },
+    "icon": "./assets/app-icon.png",
     "splash": {
       "image": "./assets/splash_dark.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B0C10",
-      "fadeDuration": 1000
+      "dark": {
+        "image": "./assets/splash_dark.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0B0C10"
+      },
+      "light": {
+        "image": "./assets/splash_light.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#F7F9FC"
+      }
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ]
+    "orientation": "portrait",
+    "plugins": []
   }
 }
