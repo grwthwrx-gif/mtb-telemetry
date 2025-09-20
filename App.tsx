@@ -1,39 +1,35 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import LoadingScreen from './LoadingScreen';
-import EntryScreen from './screens/EntryScreen';
-import CompareVideosScreen from './screens/CompareVideosScreen';
+import React from 'react';
+import { Text } from 'react-native';
+import * as Font from 'expo-font';
+import AppLoading from 'expo-app-loading';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+
+import LoadingScreen from './screens/LoadingScreen';
+import EntryScreen from './screens/EntryScreen';
+import Dashboard from './screens/Dashboard';
+import CompareVideosScreen from './screens/CompareVideosScreen';
 
 const Stack = createStackNavigator();
 
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
+  const [fontsLoaded] = Font.useFonts({
+    Orbitron: require('./assets/fonts/Orbitron-Regular.ttf'),
+    'Orbitron-Bold': require('./assets/fonts/Orbitron-Bold.ttf'),
+  });
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2000); // show loading screen for 2s
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (isLoading) {
-    return <LoadingScreen />;
+  if (!fontsLoaded) {
+    return <AppLoading />;
   }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Loading" component={LoadingScreen} />
         <Stack.Screen name="Entry" component={EntryScreen} />
+        <Stack.Screen name="Dashboard" component={Dashboard} />
         <Stack.Screen name="CompareVideos" component={CompareVideosScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
