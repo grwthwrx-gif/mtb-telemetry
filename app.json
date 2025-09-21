@@ -3,15 +3,8 @@
     "name": "mtb-telemetry",
     "slug": "mtb-telemetry",
     "version": "1.0.0",
-    "ios": {
-      "bundleIdentifier": "com.yourcompany.mtbtelemetry",
-      "buildNumber": "4"
-    },
-    "android": {
-      "package": "com.yourcompany.mtbtelemetry",
-      "versionCode": 2
-    },
-    "icon": "./assets/app-icon.png",
+    "orientation": "portrait",
+    "icon": "./assets/app_icon.png",
     "splash": {
       "image": "./assets/splash_dark.png",
       "resizeMode": "contain",
@@ -24,10 +17,34 @@
       "light": {
         "image": "./assets/splash_light.png",
         "resizeMode": "contain",
-        "backgroundColor": "#F7F9FC"
+        "backgroundColor": "#F0F0F0"
       }
     },
-    "orientation": "portrait",
-    "plugins": []
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app_icon.png",
+        "backgroundColor": "#0B0C10"
+      }
+    },
+    "web": {
+      "favicon": "./assets/app_icon.png"
+    },
+    "plugins": [
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Orbitron-Regular.ttf",
+            "./assets/fonts/Orbitron-Bold.ttf"
+          ]
+        }
+      ]
+    ]
   }
 }

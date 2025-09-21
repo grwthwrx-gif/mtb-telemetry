@@ -1,20 +1,29 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Image } from 'react-native';
+import { View, Image, StyleSheet, Animated } from 'react-native';
 
 export default function LoadingScreen({ navigation }) {
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      navigation.replace('Entry');
-    }, 2000); // 2s splash
+  const fadeAnim = new Animated.Value(0);
 
-    return () => clearTimeout(timer);
-  }, [navigation]);
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: true,
+    }).start(() => {
+      // Navigate to EntryScreen after fade-in
+      setTimeout(() => navigation.replace('Entry'), 800);
+    });
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Image source={require('../assets/logo.png')} style={styles.logo} />
-      <Text style={styles.title}>TrailSync</Text>
-      <ActivityIndicator size="large" color="#E63946" />
+      <Animated.View style={{ opacity: fadeAnim }}>
+        <Image
+          source={require('../assets/splash_dark.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -22,20 +31,12 @@ export default function LoadingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0B0C10',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1B1B1B',
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    color: '#FFFFFF',
-    marginBottom: 20,
-    fontWeight: 'bold',
-    letterSpacing: 1.5,
+    width: 220,
+    height: 220,
   },
 });
