@@ -1,22 +1,31 @@
-import React, { useEffect } from "react";
-import { View, Image, StyleSheet, Animated, Text } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, StyleSheet, Animated } from "react-native";
+import Branding from "../components/Branding"; // ✅ Psynk animated logo
 
-export default function LoadingScreen() {
-  const fadeAnim = new Animated.Value(0);
+export default function LoadingScreen({ navigation }: any) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Fade in animation
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1200,
       useNativeDriver: true,
     }).start();
-  }, []);
+
+    // Navigate to Entry screen after 2.5s
+    const timer = setTimeout(() => {
+      navigation.replace("Entry");
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
       <Animated.View style={{ opacity: fadeAnim }}>
-        <Image source={require("./assets/logo.png")} style={styles.logo} />
-        <Text style={styles.brand}>FlowSync</Text>
+        {/* 🔥 Psynk animated logo */}
+        <Branding />
       </Animated.View>
     </View>
   );
@@ -25,20 +34,8 @@ export default function LoadingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0D1B2A", // Deep navy background
+    backgroundColor: "#0B0C10", // ✅ Matches brand midnight black
     alignItems: "center",
     justifyContent: "center",
-  },
-  logo: {
-    width: 180,
-    height: 180,
-    resizeMode: "contain",
-    marginBottom: 20,
-  },
-  brand: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#E0E1DD", // Warm light grey text
-    letterSpacing: 2,
   },
 });
