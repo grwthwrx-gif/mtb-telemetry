@@ -4,18 +4,18 @@
     "slug": "mtb-telemetry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/psynk/logo_icon.png",
+    "icon": "./assets/icons/psynk/Icon square png 1024.png",
     "splash": {
-      "image": "./assets/images/psynk/logo_full.png",
+      "image": "./assets/splash/psynk/splash_dark_2048.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B0C10",
       "dark": {
-        "image": "./assets/images/psynk/logo_full.png",
+        "image": "./assets/splash/psynk/splash_dark_2048.png",
         "resizeMode": "contain",
         "backgroundColor": "#0B0C10"
       },
       "light": {
-        "image": "./assets/images/psynk/logo_full.png",
+        "image": "./assets/splash/psynk/splash_dark_2048.png",
         "resizeMode": "contain",
         "backgroundColor": "#F0F0F0"
       }
@@ -28,24 +28,23 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/psynk/logo_icon.png",
+        "foregroundImage": "./assets/icons/psynk/Icon square png 1024.png",
         "backgroundColor": "#0B0C10"
       }
     },
     "web": {
-      "favicon": "./assets/images/psynk/favicon.ico"
+      "favicon": "./assets/icons/psynk/Icon square png 1024.png"
     },
     "plugins": [
       [
         "expo-font",
         {
           "fonts": [
-            "./assets/fonts/Orbitron-Regular.ttf",
-            "./assets/fonts/Orbitron-Bold.ttf"
+            "./assets/fonts/psynk/Orbitron-Regular.ttf",
+            "./assets/fonts/psynk/Orbitron-Bold.ttf"
           ]
         }
       ]
     ]
   }
 }
-
