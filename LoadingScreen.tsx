@@ -1,31 +1,79 @@
+// loadingScreen.tsx
 import React, { useEffect, useRef } from "react";
-import { View, StyleSheet, Animated } from "react-native";
-import Branding from "../components/Branding"; // ✅ Psynk animated logo
+import { View, StyleSheet, Animated, Easing, Image } from "react-native";
 
 export default function LoadingScreen({ navigation }: any) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Fade in animation
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1200,
-      useNativeDriver: true,
-    }).start();
+    // Run smooth fade + scale in
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
-    // Navigate to Entry screen after 2.5s
+    // Continuous pulsing glow
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+
+    // Navigate to Entry screen after 3s
     const timer = setTimeout(() => {
       navigation.replace("Entry");
-    }, 2500);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [navigation]);
 
+  // Glow intensity
+  const glowShadow = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 15],
+  });
+
   return (
     <View style={styles.container}>
-      <Animated.View style={{ opacity: fadeAnim }}>
-        {/* 🔥 Psynk animated logo */}
-        <Branding />
+      <Animated.View
+        style={{
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+          shadowColor: "#00FFF7",
+          shadowOpacity: 0.9,
+          shadowRadius: glowShadow,
+          elevation: 10,
+        }}
+      >
+        {/* ✅ Updated to use your transparent glowing logo */}
+        <Image
+          source={require("../assets/images/psynk/logo_transparent_512.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </Animated.View>
     </View>
   );
@@ -37,5 +85,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0B0C10", // ✅ Matches brand midnight black
     alignItems: "center",
     justifyContent: "center",
+  },
+  logo: {
+    width: 220,
+    height: 220,
   },
 });
