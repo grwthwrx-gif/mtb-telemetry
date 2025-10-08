@@ -1,73 +1,82 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { View, StyleSheet, Animated, Easing, Image } from "react-native";
 
 const Branding = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(-40)).current; // motion lines slide in
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Fade + scale in
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 1200,
+        duration: 1000,
         useNativeDriver: true,
       }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 1200,
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 40,
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Continuous glow pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
   }, []);
+
+  const glowRadius = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [4, 14],
+  });
 
   return (
     <View style={styles.container}>
-      {/* Motion lines (slide in from left) */}
       <Animated.View
-        style={[
-          styles.motionLines,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateX: slideAnim }],
-          },
-        ]}
+        style={{
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+          shadowColor: "#00FFF7",
+          shadowOpacity: 0.8,
+          shadowRadius: glowRadius,
+          elevation: 12,
+        }}
       >
-        <View style={styles.line} />
-        <View style={[styles.line, { width: 25 }]} />
-        <View style={[styles.line, { width: 15 }]} />
+        {/* ✅ Uses your transparent glowing logo asset */}
+        <Image
+          source={require("../assets/icons/psynk/icon_transparent_512.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </Animated.View>
-
-      {/* Brand text */}
-      <Animated.Text style={[styles.text, { opacity: fadeAnim }]}>
-        psynk
-      </Animated.Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  motionLines: {
-    flexDirection: "row",
-    marginRight: 10,
-  },
-  line: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#00FFF7", // electric cyan
-    marginHorizontal: 2,
-    width: 35,
-  },
-  text: {
-    fontSize: 48,
-    fontFamily: "Orbitron-Bold",
-    color: "#FFFFFF",
-    letterSpacing: 2,
-    textTransform: "lowercase",
+  logo: {
+    width: 200,
+    height: 200,
   },
 });
 
