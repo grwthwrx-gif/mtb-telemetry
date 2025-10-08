@@ -1,4 +1,4 @@
-// loadingScreen.tsx
+// LoadingScreen.tsx
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Easing, Image } from "react-native";
 
@@ -8,7 +8,7 @@ export default function LoadingScreen({ navigation }: any) {
   const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Run smooth fade + scale in
+    // Smooth fade + scale in animation
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -42,7 +42,7 @@ export default function LoadingScreen({ navigation }: any) {
       ])
     ).start();
 
-    // Navigate to Entry screen after 3s
+    // Navigate to Entry screen after 3 seconds
     const timer = setTimeout(() => {
       navigation.replace("Entry");
     }, 3000);
@@ -50,7 +50,7 @@ export default function LoadingScreen({ navigation }: any) {
     return () => clearTimeout(timer);
   }, [navigation]);
 
-  // Glow intensity
+  // Glow intensity interpolation
   const glowShadow = glowAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [2, 15],
@@ -68,9 +68,9 @@ export default function LoadingScreen({ navigation }: any) {
           elevation: 10,
         }}
       >
-        {/* ✅ Updated to use your transparent glowing logo */}
+        {/* ✅ Transparent glowing Psynk logo */}
         <Image
-          source={require("../assets/images/psynk/logo_transparent_512.png")}
+          source={require("../assets/icons/psynk/icon_transparent_512.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -82,7 +82,7 @@ export default function LoadingScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B0C10", // ✅ Matches brand midnight black
+    backgroundColor: "#0B0C10", // ✅ Midnight black background
     alignItems: "center",
     justifyContent: "center",
   },
