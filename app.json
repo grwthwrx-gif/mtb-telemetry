@@ -4,18 +4,18 @@
     "slug": "mtb-telemetry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icons/psynk/Icon square png 1024.png",
+    "icon": "./assets/icons/psynk/icon_square_png_1024.png",
     "splash": {
-      "image": "./assets/splash/psynk/splash_dark_2048.png",
+      "image": "./assets/images/psynk/splash_dark_2048.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B0C10",
       "dark": {
-        "image": "./assets/splash/psynk/splash_dark_2048.png",
+        "image": "./assets/images/psynk/splash_dark_2048.png",
         "resizeMode": "contain",
         "backgroundColor": "#0B0C10"
       },
       "light": {
-        "image": "./assets/splash/psynk/splash_dark_2048.png",
+        "image": "./assets/images/psynk/splash_dark_2048.png",
         "resizeMode": "contain",
         "backgroundColor": "#F0F0F0"
       }
@@ -28,12 +28,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/psynk/Icon square png 1024.png",
+        "foregroundImage": "./assets/icons/psynk/icon_square_512.png",
         "backgroundColor": "#0B0C10"
       }
     },
     "web": {
-      "favicon": "./assets/icons/psynk/Icon square png 1024.png"
+      "favicon": "./assets/icons/psynk/icon_square_512.png"
     },
     "plugins": [
       [
