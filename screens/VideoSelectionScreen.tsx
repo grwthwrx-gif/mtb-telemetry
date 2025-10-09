@@ -1,21 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import type { StackNavigationProp } from "@react-navigation/stack";
 
-type RootStackParamList = {
-  Entry: undefined;
-  VideoSelection: undefined;
-  VideoCompare: { video1: string; video2: string };
-};
-
-type Props = {
-  navigation: StackNavigationProp<RootStackParamList, "VideoSelection">;
-};
-
-export default function VideoSelectionScreen({ navigation }: Props) {
+export default function VideoSelectionScreen({ navigation }: any) {
   const [video1, setVideo1] = useState<string | null>(null);
   const [video2, setVideo2] = useState<string | null>(null);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   const pickVideo = async (setter: React.Dispatch<React.SetStateAction<string | null>>) => {
     try {
@@ -23,60 +13,65 @@ export default function VideoSelectionScreen({ navigation }: Props) {
         type: "video/*",
         copyToCacheDirectory: true,
       });
-      if (result.canceled) return;
-      const selected = result.assets?.[0]?.uri || result.uri;
-      if (selected) setter(selected);
+      if (result.assets && result.assets.length > 0) {
+        setter(result.assets[0].uri);
+      }
     } catch (error) {
-      console.error("Error selecting video:", error);
-      Alert.alert("Error", "There was an issue selecting your video. Please try again.");
+      console.warn("Video selection failed:", error);
     }
   };
 
   const startCompare = () => {
     if (video1 && video2) {
       navigation.navigate("VideoCompare", { video1, video2 });
-    } else {
-      Alert.alert("Select Two Videos", "Please choose both videos before starting comparison.");
     }
   };
 
+  React.useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🎥 Select Two Videos</Text>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <Text style={styles.title}>🎥 Select Your Runs</Text>
 
       <TouchableOpacity style={styles.button} onPress={() => pickVideo(setVideo1)}>
-        <Text style={styles.buttonText}>{video1 ? "✅ Video 1 Selected" : "Pick Video 1"}</Text>
+        <Text style={styles.buttonText}>
+          {video1 ? "✅ First Run Loaded" : "Load First Run"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={() => pickVideo(setVideo2)}>
-        <Text style={styles.buttonText}>{video2 ? "✅ Video 2 Selected" : "Pick Video 2"}</Text>
+        <Text style={styles.buttonText}>
+          {video2 ? "✅ Second Run Loaded" : "Load Second Run"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={[
           styles.button,
-          { backgroundColor: video1 && video2 ? "#00FFF7" : "#555" },
+          {
+            backgroundColor: video1 && video2 ? "#00FFF7" : "#333",
+            shadowColor: video1 && video2 ? "#00FFF7" : "transparent",
+          },
         ]}
         onPress={startCompare}
         disabled={!video1 || !video2}
       >
-        <Text
-          style={[
-            styles.buttonText,
-            { color: video1 && video2 ? "#0B0C10" : "#999" },
-          ]}
-        >
-          🚀 Start Compare
-        </Text>
+        <Text style={[styles.buttonText, { color: "#0B0C10" }]}>🚀 Compare Runs</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.button, { backgroundColor: "#222" }]}
         onPress={() => navigation.navigate("Entry")}
       >
-        <Text style={styles.buttonText}>🔄 Start Over</Text>
+        <Text style={styles.buttonText}>🔄 Return to Start</Text>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -93,21 +88,24 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#FFFFFF",
     marginBottom: 40,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    textShadowColor: "#00FFF7",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   button: {
     backgroundColor: "#FF2975",
     paddingVertical: 16,
-    borderRadius: 12,
-    marginVertical: 10,
+    borderRadius: 14,
+    marginVertical: 12,
     width: "80%",
     alignItems: "center",
+    shadowColor: "#FF2975",
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
   },
   buttonText: {
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "bold",
-    textTransform: "uppercase",
   },
 });
