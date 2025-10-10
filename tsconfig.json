@@ -2,45 +2,33 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "target": "esnext",
-<<<<<<< HEAD
-    "lib": ["esnext"],
-    "allowJs": true,
-    "jsx": "react-native",
-    "noEmit": true,
-    "isolatedModules": true,
-    "strict": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "types": ["react", "react-native", "expo"],
-    "baseUrl": ".",
-    "paths": {
-      "@screens/*": ["screens/*"],
-      "@components/*": ["components/*"],
-      "@assets/*": ["assets/*"]
-    }
-  },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "babel.config.js", "metro.config.js"]
-=======
     "module": "esnext",
     "jsx": "react-native",
+    "moduleResolution": "bundler",
     "strict": true,
     "allowJs": true,
-    "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
+    "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@components/*": ["components/*"],
+      "@screens/*": ["screens/*"],
+      "@assets/*": ["assets/*"],
+      "@config/*": ["src/config/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
->>>>>>> 3155d64 (🧠 Updated tsconfig.json for TypeScript Expo support)
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "App.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js"
+  ]
 }
