@@ -1,26 +1,32 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Animated } from 'react-native';
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Animated, Easing } from "react-native";
 
-export default function LoadingScreen({ navigation }) {
-  const fadeAnim = new Animated.Value(0);
+export default function LoadingScreen({ navigation }: { navigation: any }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Fade in animation
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 1500,
+      easing: Easing.inOut(Easing.ease),
       useNativeDriver: true,
     }).start(() => {
-      setTimeout(() => navigation.replace('Entry'), 1000);
+      // Wait a bit before moving to the Entry screen
+      const timeout = setTimeout(() => navigation.replace("Entry"), 1000);
+      return () => clearTimeout(timeout);
     });
-  }, []);
+  }, [fadeAnim, navigation]);
 
   return (
     <View style={styles.container}>
       <Animated.Image
-        source={require('../assets/splash_dark.png')}
+        source={require("../assets/splash_dark.png")}
         style={[styles.logo, { opacity: fadeAnim }]}
       />
-      <Text style={styles.text}>mtb telemetry</Text>
+      <Animated.Text style={[styles.text, { opacity: fadeAnim }]}>
+        mtb telemetry
+      </Animated.Text>
     </View>
   );
 }
@@ -28,21 +34,21 @@ export default function LoadingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0C10',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#0B0C10",
+    justifyContent: "center",
+    alignItems: "center",
   },
   logo: {
     width: 200,
     height: 200,
     marginBottom: 20,
-    resizeMode: 'contain',
+    resizeMode: "contain",
   },
   text: {
-    fontFamily: 'Orbitron-Bold',
+    fontFamily: "Orbitron-Bold",
     fontSize: 28,
-    color: '#00FFF7',
-    textTransform: 'uppercase',
+    color: "#00FFF7",
+    textTransform: "uppercase",
     letterSpacing: 2,
   },
 });
