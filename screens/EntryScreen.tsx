@@ -1,7 +1,35 @@
 import React, { useRef, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+} from "react-native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RouteProp } from "@react-navigation/native";
 
-export default function EntryScreen({ navigation }) {
+// ✅ Define navigation types
+type RootStackParamList = {
+  Loading: undefined;
+  Entry: undefined;
+  VideoSelection: undefined;
+  VideoCompare: undefined;
+};
+
+type EntryScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "Entry"
+>;
+
+type EntryScreenRouteProp = RouteProp<RootStackParamList, "Entry">;
+
+type Props = {
+  navigation: EntryScreenNavigationProp;
+  route: EntryScreenRouteProp;
+};
+
+export default function EntryScreen({ navigation }: Props) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
 
@@ -17,20 +45,31 @@ export default function EntryScreen({ navigation }) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   return (
     <View style={styles.container}>
-      <Animated.Text style={[styles.title, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <Animated.Text
+        style={[
+          styles.title,
+          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+        ]}
+      >
         Choose Session
       </Animated.Text>
 
       <Animated.View style={{ opacity: fadeAnim }}>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("VideoSelection")}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate("VideoSelection")}
+        >
           <Text style={styles.buttonText}>Individual</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("VideoSelection")}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => navigation.navigate("VideoSelection")}
+        >
           <Text style={styles.buttonText}>Group</Text>
         </TouchableOpacity>
       </Animated.View>
