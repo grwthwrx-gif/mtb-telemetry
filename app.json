@@ -4,7 +4,7 @@
     "slug": "mtb-telemetry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icons/psynk/icon_square_png_1024.png",
+    "icon": "./assets/icons/psynk/Icon_square_png_1024.png",
     "splash": {
       "image": "./assets/images/psynk/splash_dark_2048.png",
       "resizeMode": "contain",
@@ -28,12 +28,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/psynk/icon_square_512.png",
+        "foregroundImage": "./assets/icons/psynk/Icon_square_512.png",
         "backgroundColor": "#0B0C10"
       }
     },
     "web": {
-      "favicon": "./assets/icons/psynk/icon_square_512.png"
+      "favicon": "./assets/icons/psynk/Icon_square_512.png"
     },
     "plugins": [
       [
