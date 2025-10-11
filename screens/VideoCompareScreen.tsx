@@ -1,9 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
-import { Video } from "expo-av";
+import { Video, ResizeMode } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import type { NavigationProp, RouteProp } from "@react-navigation/native";
 
-export default function VideoCompareScreen({ navigation, route }) {
+interface Props {
+  navigation: NavigationProp<any>;
+  route: RouteProp<{ params: { video1: string; video2: string } }, "params">;
+}
+
+export default function VideoCompareScreen({ navigation, route }: Props) {
   const { video1, video2 } = route.params;
   const videoRef1 = useRef<Video>(null);
   const videoRef2 = useRef<Video>(null);
@@ -14,6 +20,7 @@ export default function VideoCompareScreen({ navigation, route }) {
 
   const togglePlayPause = async () => {
     if (!videoRef1.current || !videoRef2.current) return;
+
     if (isPlaying) {
       await videoRef1.current.pauseAsync();
       await videoRef2.current.pauseAsync();
@@ -23,7 +30,8 @@ export default function VideoCompareScreen({ navigation, route }) {
       await videoRef2.current.playAsync();
       timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     }
-    setIsPlaying(!isPlaying);
+
+    setIsPlaying((prev) => !prev);
   };
 
   const resetSession = () => {
@@ -65,19 +73,17 @@ export default function VideoCompareScreen({ navigation, route }) {
           ref={videoRef1}
           source={{ uri: video1 }}
           style={styles.video}
-          resizeMode="contain"
+          resizeMode={ResizeMode.CONTAIN}
         />
         <Video
           ref={videoRef2}
           source={{ uri: video2 }}
           style={styles.video}
-          resizeMode="contain"
+          resizeMode={ResizeMode.CONTAIN}
         />
       </View>
 
-      {showOverlay && (
-        <Text style={styles.overlay}>⏱ Elapsed: {elapsed}s</Text>
-      )}
+      {showOverlay && <Text style={styles.overlay}>⏱ Elapsed: {elapsed}s</Text>}
 
       <View style={styles.controls}>
         <TouchableOpacity onPress={togglePlayPause} style={styles.controlButton}>
