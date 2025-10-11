@@ -1,11 +1,24 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import type { NavigationProp } from "@react-navigation/native";
+import type { StackNavigationProp } from "@react-navigation/stack";
+import type { RouteProp } from "@react-navigation/native";
 
-interface Props {
-  navigation: NavigationProp<any>;
-}
+// ✅ Strongly typed navigation routes
+type RootStackParamList = {
+  Entry: undefined;
+  VideoSelection: undefined;
+  VideoCompare: { video1: string; video2: string };
+};
+
+type VideoSelectionScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "VideoSelection"
+>;
+
+type Props = {
+  navigation: VideoSelectionScreenNavigationProp;
+};
 
 export default function VideoSelectionScreen({ navigation }: Props) {
   const [video1, setVideo1] = useState<string | null>(null);
@@ -15,22 +28,27 @@ export default function VideoSelectionScreen({ navigation }: Props) {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "video/*",
-        copyToCacheDirectory: true,
         multiple: false,
+        copyToCacheDirectory: true,
       });
 
-      if (result.assets && result.assets.length > 0) {
-        const uri = result.assets[0].uri;
-        setter(uri);
-      }
+      // ✅ Handle both legacy & modern formats
+      if (result.canceled) return;
+
+      const uri = result.assets?.[0]?.uri;
+      if (uri) setter(uri);
+      else Alert.alert("Error", "Unable to load video file");
     } catch (err) {
       console.error("Video pick error:", err);
+      Alert.alert("Error", "There was an issue selecting the video.");
     }
   };
 
   const startCompare = () => {
     if (video1 && video2) {
       navigation.navigate("VideoCompare", { video1, video2 });
+    } else {
+      Alert.alert("Select Two Videos", "Please select both videos before comparing.");
     }
   };
 
@@ -60,7 +78,7 @@ export default function VideoSelectionScreen({ navigation }: Props) {
         onPress={startCompare}
         disabled={!video1 || !video2}
       >
-        <Text style={styles.buttonText}>🚀 Start Compare</Text>
+        <Text style={[styles.buttonText, { color: "#0B0C10" }]}>🚀 Start Compare</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
