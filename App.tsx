@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { View, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { useFonts } from "expo-font";
-import { View, ActivityIndicator } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 
 import Branding from "./components/Branding"; // Optional logo animation
 import LoadingScreen from "./screens/LoadingScreen";
@@ -10,6 +11,9 @@ import EntryScreen from "./screens/EntryScreen";
 import VideoSelectionScreen from "./screens/VideoSelectionScreen";
 import VideoCompareScreen from "./screens/VideoCompareScreen";
 // import Dashboard from "./screens/Dashboard"; // Uncomment if used
+
+// Prevent splash screen from auto hiding until fonts are loaded
+SplashScreen.preventAutoHideAsync();
 
 const Stack = createStackNavigator();
 
@@ -19,7 +23,15 @@ export default function App() {
     "Orbitron-Bold": require("./assets/fonts/Orbitron-Bold.ttf"),
   });
 
-  // ✅ Replace deprecated AppLoading with a simple fallback
+  useEffect(() => {
+    async function prepare() {
+      if (fontsLoaded) {
+        await SplashScreen.hideAsync();
+      }
+    }
+    prepare();
+  }, [fontsLoaded]);
+
   if (!fontsLoaded) {
     return (
       <View
