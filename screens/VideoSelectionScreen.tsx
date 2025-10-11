@@ -1,8 +1,13 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import type { NavigationProp } from "@react-navigation/native";
 
-export default function VideoSelectionScreen({ navigation }) {
+interface Props {
+  navigation: NavigationProp<any>;
+}
+
+export default function VideoSelectionScreen({ navigation }: Props) {
   const [video1, setVideo1] = useState<string | null>(null);
   const [video2, setVideo2] = useState<string | null>(null);
 
@@ -11,9 +16,12 @@ export default function VideoSelectionScreen({ navigation }) {
       const result = await DocumentPicker.getDocumentAsync({
         type: "video/*",
         copyToCacheDirectory: true,
+        multiple: false,
       });
-      if (result.type === "success") {
-        setter(result.uri);
+
+      if (result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        setter(uri);
       }
     } catch (err) {
       console.error("Video pick error:", err);
