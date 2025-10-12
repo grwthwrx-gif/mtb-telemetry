@@ -1,4 +1,36 @@
-.ssh/
-.ssh/
-.expo/
+# Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo / React Native
+.expo/
+.expo-shared/
+web-build/
+dist/
+build/
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS / Linux / Windows system files
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+
+# Environment and credentials
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Misc
+package-lock.json.old
+*.bak
