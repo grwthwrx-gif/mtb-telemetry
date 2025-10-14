@@ -1,3 +1,4 @@
+import 'react-native-reanimated';
 import React, { useEffect } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
