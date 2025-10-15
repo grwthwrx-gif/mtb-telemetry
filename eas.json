@@ -5,26 +5,23 @@
   "build": {
     "development": {
       "distribution": "internal",
-      "autoIncrement": true,
       "ios": {
         "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true,
       "ios": {
         "simulator": false
       }
     },
     "production": {
-      "autoIncrement": true,
       "ios": {
         "simulator": false
       }
     }
   },
-  "submit": {
-    "production": {}
+  "hooks": {
+    "pre-build": "node .eas/hooks/pre-build.js"
   }
 }
