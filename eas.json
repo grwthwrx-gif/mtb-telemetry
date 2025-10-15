@@ -5,25 +5,26 @@
   "build": {
     "development": {
       "distribution": "internal",
-      "channel": "development",
+      "autoIncrement": true,
       "ios": {
         "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
+      "autoIncrement": true,
       "ios": {
-        "simulator": false,
-        "autoIncrement": "buildNumber"
+        "simulator": false
       }
     },
     "production": {
-      "channel": "production",
+      "autoIncrement": true,
       "ios": {
-        "simulator": false,
-        "autoIncrement": "buildNumber"
+        "simulator": false
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }
