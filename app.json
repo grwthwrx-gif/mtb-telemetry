@@ -2,7 +2,7 @@
   "expo": {
     "name": "mtb-telemetry",
     "slug": "mtb-telemetry",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icons/psynk/icon_square_1024.png",
     "userInterfaceStyle": "dark",
@@ -21,15 +21,19 @@
         "backgroundColor": "#F0F0F0"
       }
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/psynk/icon_square_512.png",
         "backgroundColor": "#0B0C10"
-      }
+      },
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/icons/psynk/icon_square_512.png"
