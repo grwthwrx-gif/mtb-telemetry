@@ -26,7 +26,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "5"
+      "buildNumber": "5",
+      "bundleIdentifier": "com.grthwrx.mtbtelemetry",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -48,6 +52,11 @@
           ]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "23c8c4dd-8c23-4489-aa30-4ea549424045"
+      }
+    }
   }
 }
