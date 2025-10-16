@@ -20,8 +20,5 @@
         "simulator": false
       }
     }
-  },
-  "hooks": {
-    "pre-build": "node .eas/hooks/pre-build.js"
   }
 }
