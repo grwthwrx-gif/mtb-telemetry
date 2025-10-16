@@ -26,14 +26,14 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/psynk/icon_square_512.png",
         "backgroundColor": "#0B0C10"
       },
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/icons/psynk/icon_square_512.png"
