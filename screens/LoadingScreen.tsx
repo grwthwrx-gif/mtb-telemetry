@@ -1,4 +1,4 @@
-// LoadingScreen.tsx
+// ./screens/LoadingScreen.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Animated, Text, StyleSheet } from 'react-native';
 
@@ -6,21 +6,18 @@ export default function LoadingScreen({ navigation }) {
   const [progress] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    // Animate progress bar from 0 to 100% over 2 seconds
     Animated.timing(progress, {
       toValue: 100,
       duration: 2000,
       useNativeDriver: false,
     }).start(() => {
-      // Navigate to EntryScreen after animation completes
       navigation.replace('Entry');
     });
   }, []);
 
-  // Interpolate width from 0% → 100%
   const widthInterpolated = progress.interpolate({
     inputRange: [0, 100],
-    outputRange: ['0%', '80%'], // bar max width is 80% of screen width
+    outputRange: ['0%', '80%'],
   });
 
   return (
