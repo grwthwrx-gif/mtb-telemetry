@@ -21,7 +21,7 @@ export default function LoadingScreen({ navigation }: { navigation: any }) {
   return (
     <View style={styles.container}>
       <Animated.Image
-        source={require("../assets/splash_dark.png")}
+        source={require("./assets/images/psynk/splash_dark_2048.png")}
         style={[styles.logo, { opacity: fadeAnim }]}
       />
       <Animated.Text style={[styles.text, { opacity: fadeAnim }]}>
