@@ -27,7 +27,7 @@
     "ios": {
       "supportsTablet": true,
       "buildNumber": "5",
-      "bundleIdentifier": "com.grthwrx.mtbtelemetry",
+      "bundleIdentifier": "com.grthwrx.psynk",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
