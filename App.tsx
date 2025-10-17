@@ -1,4 +1,3 @@
-// App.tsx
 import 'react-native-reanimated';
 import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, Animated, Easing } from "react-native";
@@ -14,7 +13,6 @@ import VideoSelectionScreen from "./screens/VideoSelectionScreen";
 import VideoCompareScreen from "./screens/VideoCompareScreen";
 
 SplashScreen.preventAutoHideAsync();
-
 const Stack = createStackNavigator();
 
 export default function App() {
@@ -24,12 +22,11 @@ export default function App() {
   });
 
   const [showSplash, setShowSplash] = useState(true);
-  const [fadeAnim] = useState(new Animated.Value(0)); // branding fade-in
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     async function prepare() {
       if (fontsLoaded) {
-        // Branding fade-in animation
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 1500,
@@ -37,7 +34,6 @@ export default function App() {
           useNativeDriver: true,
         }).start();
 
-        // Keep splash visible for 2.5 seconds, then hide
         setTimeout(async () => {
           setShowSplash(false);
           await SplashScreen.hideAsync();
@@ -49,18 +45,10 @@ export default function App() {
 
   if (!fontsLoaded || showSplash) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#0B0C10", // deep black
-        }}
-      >
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0B0C10" }}>
         {showSplash ? (
           <Animated.View style={{ opacity: fadeAnim, alignItems: "center" }}>
             <Branding />
-            {/* tiny progress indicator */}
             <View style={{ marginTop: 20 }}>
               <ActivityIndicator size="small" color="#00FFF7" />
             </View>
@@ -74,10 +62,7 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Loading"
-        screenOptions={{ headerShown: false }}
-      >
+      <Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Loading" component={LoadingScreen} />
         <Stack.Screen name="Entry" component={EntryScreen} />
         <Stack.Screen name="VideoSelection" component={VideoSelectionScreen} />
