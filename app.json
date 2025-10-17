@@ -47,8 +47,8 @@
         "expo-font",
         {
           "fonts": [
-            "./assets/fonts/psynk/Orbitron-Regular.ttf",
-            "./assets/fonts/psynk/Orbitron-Bold.ttf"
+            "./assets/fonts/Orbitron-Regular.ttf",
+            "./assets/fonts/Orbitron-Bold.ttf"
           ]
         }
       ]
@@ -59,4 +59,5 @@
       }
     }
   }
+}
 }
