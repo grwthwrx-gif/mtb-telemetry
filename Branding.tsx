@@ -1,3 +1,4 @@
+// ./components/Branding.tsx
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet, Animated, Easing, Image } from "react-native";
 
@@ -58,7 +59,6 @@ const Branding = () => {
           elevation: 12,
         }}
       >
-        {/* ✅ Uses your transparent glowing logo asset */}
         <Image
           source={require("../assets/icons/psynk/icon_transparent_512.png")}
           style={styles.logo}
