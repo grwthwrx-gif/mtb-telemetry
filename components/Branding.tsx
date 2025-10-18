@@ -60,7 +60,7 @@ const Branding = () => {
       >
         {/* ✅ Uses your transparent glowing logo asset */}
         <Image
-          source={require("../assets/icons/psynk/icon_transparent_512.png")}
+          source={require("../assets/icons/psynk/logo_transparent_512.png")}
           style={styles.logo}
           resizeMode="contain"
         />
