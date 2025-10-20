@@ -1,3 +1,4 @@
+// ./screens/VideoSelectionScreen.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -6,8 +7,9 @@ import {
   StyleSheet,
   Alert,
   FlatList,
+  Platform,
 } from "react-native";
-import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import type { NavigationProp } from "@react-navigation/native";
 
@@ -25,49 +27,66 @@ export default function VideoSelectionScreen({ navigation }: Props) {
   const [videos, setVideos] = useState<VideoItem[]>([]);
 
   const pickVideo = async () => {
+    if (Platform.OS === "ios") {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission required",
+          "Please grant access to your photo library."
+        );
+        return;
+      }
+    }
+
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "video/*",
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsMultipleSelection: true,
+        quality: 1,
       });
 
-      if (result.type === "success") {
-        const newVideo: VideoItem = {
-          id: String(Date.now()),
-          uri: result.uri,
-          name: result.name || "Unnamed Video",
-        };
-        setVideos((prev) => [...prev, newVideo]);
+      if (!result.canceled) {
+        const selectedVideos = result.assets.map((asset, index) => ({
+          id: String(Date.now() + index),
+          uri: asset.uri,
+          name: asset.filename || "Unnamed Video",
+        }));
+        setVideos((prev) => [...prev, ...selectedVideos]);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to select video.");
+      Alert.alert("Error", "Failed to access your video library.");
     }
   };
 
   const startComparison = () => {
     if (videos.length < 2) {
-      Alert.alert("Select Two Videos", "Please select at least two videos to compare.");
+      Alert.alert(
+        "Select Two Videos",
+        "Please select at least two videos to compare before continuing."
+      );
       return;
     }
+
     navigation.navigate("VideoCompare", {
       video1: videos[0].uri,
       video2: videos[1].uri,
     });
   };
 
-  const resetSelection = () => {
-    setVideos([]);
-  };
+  const resetSelection = () => setVideos([]);
 
   const renderVideo = ({ item }: { item: VideoItem }) => (
     <View style={styles.videoItem}>
-      <Ionicons name="videocam" size={20} color="#00FFF7" />
+      <Ionicons name="videocam" size={20} color="#FFFFFF" />
       <Text style={styles.videoText}>{item.name}</Text>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🎥 Select Videos to Compare</Text>
+      {/* Top Icon */}
+      <Ionicons name="bicycle-outline" size={50} color="#FFFFFF" style={{ marginBottom: 10 }} />
+      <Text style={styles.title}>Select Runs</Text>
 
       <FlatList
         data={videos}
@@ -81,12 +100,12 @@ export default function VideoSelectionScreen({ navigation }: Props) {
 
       <View style={styles.buttonRow}>
         <TouchableOpacity onPress={pickVideo} style={styles.actionButton}>
-          <Ionicons name="add-circle-outline" size={28} color="#00FFF7" />
+          <Ionicons name="add-circle-outline" size={28} color="#FFFFFF" />
           <Text style={styles.buttonText}>Add Video</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={resetSelection} style={styles.actionButton}>
-          <Ionicons name="trash-outline" size={28} color="#FF2975" />
+          <Ionicons name="trash-outline" size={28} color="#FFFFFF" />
           <Text style={styles.buttonText}>Reset</Text>
         </TouchableOpacity>
       </View>
@@ -99,8 +118,8 @@ export default function VideoSelectionScreen({ navigation }: Props) {
         ]}
         disabled={videos.length < 2}
       >
-        <Ionicons name="speedometer" size={28} color="#0B0C10" />
-        <Text style={styles.startButtonText}>Start Comparison</Text>
+        <Ionicons name="speedometer" size={28} color="#FFFFFF" />
+        <Text style={styles.startButtonText}>Compare Runs</Text>
       </TouchableOpacity>
     </View>
   );
@@ -140,7 +159,7 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     textAlign: "center",
-    color: "#888",
+    color: "#AAA",
     marginTop: 40,
   },
   buttonRow: {
@@ -160,16 +179,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#00FFF7",
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
     paddingVertical: 14,
     paddingHorizontal: 30,
     borderRadius: 30,
-    shadowColor: "#00FFF7",
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
   },
   startButtonText: {
-    color: "#0B0C10",
+    color: "#FFFFFF",
     fontWeight: "bold",
     fontSize: 18,
     marginLeft: 8,
