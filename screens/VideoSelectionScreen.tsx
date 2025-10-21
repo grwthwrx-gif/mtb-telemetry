@@ -1,125 +1,58 @@
-// ./screens/VideoSelectionScreen.tsx
+// screens/VideoSelectionScreen.tsx
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  FlatList,
-  Platform,
-} from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import type { NavigationProp } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 
-interface Props {
-  navigation: NavigationProp<any>;
-}
-
-interface VideoItem {
-  id: string;
-  uri: string;
-  name: string;
-}
-
-export default function VideoSelectionScreen({ navigation }: Props) {
-  const [videos, setVideos] = useState<VideoItem[]>([]);
+export default function VideoSelectionScreen() {
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+  const navigation = useNavigation();
 
   const pickVideo = async () => {
-    if (Platform.OS === "ios") {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission required",
-          "Please grant access to your photo library."
-        );
-        return;
-      }
-    }
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsMultipleSelection: true,
-        quality: 1,
-      });
-
-      if (!result.canceled) {
-        const selectedVideos = result.assets.map((asset, index) => ({
-          id: String(Date.now() + index),
-          uri: asset.uri,
-          name: asset.filename || "Unnamed Video",
-        }));
-        setVideos((prev) => [...prev, ...selectedVideos]);
-      }
-    } catch (error) {
-      Alert.alert("Error", "Failed to access your video library.");
-    }
-  };
-
-  const startComparison = () => {
-    if (videos.length < 2) {
-      Alert.alert(
-        "Select Two Videos",
-        "Please select at least two videos to compare before continuing."
-      );
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      alert("Permission to access photos is required!");
       return;
     }
 
-    navigation.navigate("VideoCompare", {
-      video1: videos[0].uri,
-      video2: videos[1].uri,
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
     });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setVideoUri(result.assets[0].uri);
+    }
   };
-
-  const resetSelection = () => setVideos([]);
-
-  const renderVideo = ({ item }: { item: VideoItem }) => (
-    <View style={styles.videoItem}>
-      <Ionicons name="videocam" size={20} color="#FFFFFF" />
-      <Text style={styles.videoText}>{item.name}</Text>
-    </View>
-  );
 
   return (
     <View style={styles.container}>
-      {/* Top Icon */}
-      <Ionicons name="bicycle-outline" size={50} color="#FFFFFF" style={{ marginBottom: 10 }} />
-      <Text style={styles.title}>Select Runs</Text>
+      {/* Top icon */}
+      <Ionicons name="bicycle-outline" size={60} color="#FFFFFF" style={{ marginBottom: 20 }} />
 
-      <FlatList
-        data={videos}
-        renderItem={renderVideo}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        ListEmptyComponent={
-          <Text style={styles.placeholder}>No videos selected yet.</Text>
-        }
-      />
+      <Text style={styles.title}>Select Run</Text>
 
-      <View style={styles.buttonRow}>
-        <TouchableOpacity onPress={pickVideo} style={styles.actionButton}>
-          <Ionicons name="add-circle-outline" size={28} color="#FFFFFF" />
-          <Text style={styles.buttonText}>Add Video</Text>
-        </TouchableOpacity>
+      <TouchableOpacity style={styles.selectButton} onPress={pickVideo}>
+        <Ionicons name="videocam-outline" size={26} color="#FFFFFF" style={{ marginRight: 10 }} />
+        <Text style={styles.selectButtonText}>Select from Library</Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity onPress={resetSelection} style={styles.actionButton}>
-          <Ionicons name="trash-outline" size={28} color="#FFFFFF" />
-          <Text style={styles.buttonText}>Reset</Text>
-        </TouchableOpacity>
-      </View>
+      {videoUri ? (
+        <Text style={styles.fileText}>✅ Video selected!</Text>
+      ) : (
+        <Text style={styles.fileText}>No video selected yet</Text>
+      )}
 
       <TouchableOpacity
-        onPress={startComparison}
-        style={[
-          styles.startButton,
-          { opacity: videos.length >= 2 ? 1 : 0.5 },
-        ]}
-        disabled={videos.length < 2}
+        style={[styles.compareButton, { opacity: videoUri ? 1 : 0.4 }]}
+        onPress={() =>
+          videoUri && navigation.navigate("VideoCompare" as never, { videoUri } as never)
+        }
+        disabled={!videoUri}
       >
-        <Ionicons name="speedometer" size={28} color="#FFFFFF" />
-        <Text style={styles.startButtonText}>Compare Runs</Text>
+        <Text style={styles.compareButtonText}>Start Comparison</Text>
       </TouchableOpacity>
     </View>
   );
@@ -129,67 +62,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B0C10",
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 80,
-    paddingHorizontal: 20,
+    padding: 20,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
+    fontFamily: "Orbitron-Bold",
+    fontSize: 28,
     color: "#FFFFFF",
-    marginBottom: 20,
+    marginBottom: 40,
+    textTransform: "uppercase",
+    letterSpacing: 2,
   },
-  list: {
-    width: "100%",
-    maxHeight: 250,
+  selectButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1A1C21",
+    borderColor: "#00FFF7",
+    borderWidth: 1.5,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
     marginBottom: 30,
   },
-  videoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 6,
-  },
-  videoText: {
+  selectButtonText: {
     color: "#FFFFFF",
-    marginLeft: 10,
+    fontSize: 16,
+    fontFamily: "Orbitron-Regular",
   },
-  placeholder: {
-    textAlign: "center",
-    color: "#AAA",
-    marginTop: 40,
+  fileText: {
+    color: "#AAAAAA",
+    fontSize: 14,
+    marginBottom: 30,
   },
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    width: "100%",
-    marginBottom: 40,
+  compareButton: {
+    backgroundColor: "#FF2975",
+    paddingVertical: 16,
+    paddingHorizontal: 50,
+    borderRadius: 14,
+    shadowColor: "#FF2975",
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
   },
-  actionButton: {
-    alignItems: "center",
-  },
-  buttonText: {
+  compareButtonText: {
     color: "#FFFFFF",
-    marginTop: 4,
-  },
-  startButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 30,
-  },
-  startButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
     fontSize: 18,
-    marginLeft: 8,
+    fontFamily: "Orbitron-Bold",
+    textTransform: "uppercase",
   },
 });

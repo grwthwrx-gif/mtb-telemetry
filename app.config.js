@@ -47,6 +47,7 @@ export default {
       }
     },
     android: {
+      package: 'com.grthwrx.psynk',
       adaptiveIcon: {
         foregroundImage: './assets/icons/psynk/icon_square_512.png',
         backgroundColor: '#0B0C10'
@@ -82,4 +83,3 @@ export default {
     jsEngine: 'jsc'
   }
 };
-

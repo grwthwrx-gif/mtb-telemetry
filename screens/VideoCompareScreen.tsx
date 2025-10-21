@@ -1,77 +1,41 @@
-// ./screens/VideoCompareScreen.tsx
-import React, { useRef } from "react";
-import { View, Text, StyleSheet, Alert, Dimensions } from "react-native";
+// screens/VideoCompareScreen.tsx
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import { RouteProp, useRoute } from "@react-navigation/native";
-
-const { width } = Dimensions.get("window");
-
-type RootStackParamList = {
-  VideoCompare: { video1?: string; video2?: string };
-};
-
-type CompareRouteProp = RouteProp<RootStackParamList, "VideoCompare">;
+import { useRoute, useNavigation } from "@react-navigation/native";
 
 export default function VideoCompareScreen() {
-  const route = useRoute<CompareRouteProp>();
-  const video1 = route.params?.video1;
-  const video2 = route.params?.video2;
-
-  const player1 = useRef<Video>(null);
-  const player2 = useRef<Video>(null);
-
-  if (!video1 || !video2) {
-    return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={48} color="#FFFFFF" />
-        <Text style={styles.errorText}>No videos selected.</Text>
-        <Text style={styles.errorSub}>
-          Please go back and select two videos to compare.
-        </Text>
-      </View>
-    );
-  }
-
-  const handleReady = async () => {
-    try {
-      const status1 = await player1.current?.getStatusAsync();
-      const status2 = await player2.current?.getStatusAsync();
-
-      if (status1?.isLoaded && status2?.isLoaded) {
-        await player1.current?.playAsync();
-        await player2.current?.playAsync();
-      }
-    } catch (e) {
-      Alert.alert("Playback error", "Unable to play videos.");
-    }
-  };
+  const route = useRoute<any>();
+  const navigation = useNavigation();
+  const videoUri = route.params?.videoUri || null;
 
   return (
     <View style={styles.container}>
-      <Ionicons name="speedometer-outline" size={40} color="#FFFFFF" style={styles.icon} />
-      <Text style={styles.title}>Comparing Runs</Text>
+      <Ionicons name="stats-chart-outline" size={60} color="#FFFFFF" style={{ marginBottom: 20 }} />
 
-      <View style={styles.videoContainer}>
-        <Video
-          ref={player1}
-          source={{ uri: video1 }}
-          style={styles.video}
-          resizeMode="cover"
-          onLoad={handleReady}
-          isMuted
-        />
-        <Video
-          ref={player2}
-          source={{ uri: video2 }}
-          style={[styles.video, styles.overlayVideo]}
-          resizeMode="cover"
-          opacity={0.4}
-          isMuted
-        />
-      </View>
-
-      <Text style={styles.caption}>Ghost overlay active</Text>
+      {videoUri ? (
+        <>
+          <Video
+            source={{ uri: videoUri }}
+            style={styles.video}
+            useNativeControls
+            resizeMode="contain"
+          />
+          <Text style={styles.infoText}>Now comparing selected run...</Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.warningText}>⚠️ No video selected</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.navigate("VideoSelection" as never)}
+          >
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            <Text style={styles.backButtonText}>Go Select a Run</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }
@@ -80,55 +44,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B0C10",
+    justifyContent: "center",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 80,
-  },
-  icon: {
-    marginBottom: 10,
-  },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  videoContainer: {
-    width: width * 0.9,
-    height: width * 0.6,
-    position: "relative",
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 20,
+    padding: 20,
   },
   video: {
     width: "100%",
-    height: "100%",
+    height: 300,
+    borderRadius: 16,
+    backgroundColor: "#1A1C21",
   },
-  overlayVideo: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-  },
-  caption: {
+  infoText: {
     color: "#FFFFFF",
-    fontSize: 14,
-    opacity: 0.7,
+    fontSize: 16,
+    marginTop: 20,
+    textAlign: "center",
+    fontFamily: "Orbitron-Regular",
   },
-  errorContainer: {
-    flex: 1,
-    backgroundColor: "#0B0C10",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  errorText: {
-    color: "#FFFFFF",
+  warningText: {
+    color: "#FF2975",
     fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 10,
+    fontFamily: "Orbitron-Bold",
+    marginBottom: 20,
   },
-  errorSub: {
-    color: "#AAAAAA",
-    marginTop: 5,
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1A1C21",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderColor: "#00FFF7",
+    borderWidth: 1,
+  },
+  backButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontFamily: "Orbitron-Regular",
+    marginLeft: 10,
   },
 });
