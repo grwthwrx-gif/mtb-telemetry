@@ -1,8 +1,9 @@
-// navigation/BottomTabs.tsx
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { View, StyleSheet } from "react-native";
+
 import VideoSelectionScreen from "../screens/VideoSelectionScreen";
 import VideoCompareScreen from "../screens/VideoCompareScreen";
 
@@ -14,55 +15,48 @@ export default function BottomTabs() {
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
+          tabBarShowLabel: true,
           tabBarActiveTintColor: "#FFFFFF",
-          tabBarInactiveTintColor: "#666666",
+          tabBarInactiveTintColor: "rgba(255,255,255,0.6)",
           tabBarStyle: {
-            backgroundColor: "#0B0C10",
-            borderTopColor: "#222",
+            backgroundColor: "rgba(11,12,16,0.95)",
+            borderTopColor: "rgba(255,255,255,0.1)",
             height: 80,
-            paddingBottom: 10,
-            paddingTop: 8,
           },
           tabBarLabelStyle: {
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: "600",
-            color: "#FFFFFF",
           },
-          tabBarIcon: ({ color, size }) => {
-            let iconName: string = "";
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName: keyof typeof Ionicons.glyphMap = "ellipse";
+            let backgroundColor = focused
+              ? "rgba(255,255,255,0.15)"
+              : "transparent";
 
             if (route.name === "Select Run") {
-              iconName = "videocam-outline";
+              iconName = focused ? "film" : "film-outline";
             } else if (route.name === "Compare Runs") {
-              iconName = "speedometer-outline";
+              iconName = focused ? "analytics" : "analytics-outline";
             }
 
             return (
-              <Ionicons
-                name={iconName as any}
-                size={size + 6}
-                color={color}
-                style={{
-                  textShadowColor: "#00FFF7",
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 6,
-                }}
-              />
+              <View style={[styles.iconContainer, { backgroundColor }]}>
+                <Ionicons name={iconName} size={size} color={color} />
+              </View>
             );
           },
         })}
       >
-        <Tab.Screen
-          name="Select Run"
-          component={VideoSelectionScreen}
-          options={{ tabBarLabel: "Select Run" }}
-        />
-        <Tab.Screen
-          name="Compare Runs"
-          component={VideoCompareScreen}
-          options={{ tabBarLabel: "Compare Runs" }}
-        />
+        <Tab.Screen name="Select Run" component={VideoSelectionScreen} />
+        <Tab.Screen name="Compare Runs" component={VideoCompareScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    borderRadius: 50,
+    padding: 10,
+  },
+});
