@@ -1,40 +1,68 @@
 // screens/VideoCompareScreen.tsx
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useRef, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute } from "@react-navigation/native";
 
 export default function VideoCompareScreen() {
-  const route = useRoute<any>();
-  const navigation = useNavigation();
-  const videoUri = route.params?.videoUri || null;
+  const route = useRoute();
+  const { videos } = route.params || { videos: [] };
+  const playerRefs = useRef<(Video | null)[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlayback = async () => {
+    if (!videos.length) return;
+    const newState = !isPlaying;
+    setIsPlaying(newState);
+    for (let player of playerRefs.current) {
+      if (player) {
+        newState ? await player.playAsync() : await player.pauseAsync();
+      }
+    }
+  };
+
+  const screenWidth = Dimensions.get("window").width;
+  const videoWidth = screenWidth * 0.9;
+  const videoHeight = (videoWidth * 9) / 16;
 
   return (
     <View style={styles.container}>
-      <Ionicons name="stats-chart-outline" size={60} color="#FFFFFF" style={{ marginBottom: 20 }} />
+      <View style={styles.header}>
+        <Ionicons name="speedometer-outline" size={32} color="#FFFFFF" style={{ marginRight: 8 }} />
+        <Text style={styles.title}>Compare Runs</Text>
+      </View>
 
-      {videoUri ? (
-        <>
-          <Video
-            source={{ uri: videoUri }}
-            style={styles.video}
-            useNativeControls
-            resizeMode="contain"
-          />
-          <Text style={styles.infoText}>Now comparing selected run...</Text>
-        </>
+      {videos.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="alert-circle-outline" size={48} color="#FFFFFF" />
+          <Text style={styles.emptyText}>No videos selected yet.</Text>
+        </View>
       ) : (
-        <>
-          <Text style={styles.warningText}>⚠️ No video selected</Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.navigate("VideoSelection" as never)}
-          >
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
-            <Text style={styles.backButtonText}>Go Select a Run</Text>
-          </TouchableOpacity>
-        </>
+        videos.map((video, index) => (
+          <View key={index} style={styles.videoContainer}>
+            <Video
+              ref={(ref) => (playerRefs.current[index] = ref)}
+              source={{ uri: video.uri }}
+              style={{ width: videoWidth, height: videoHeight, borderRadius: 12 }}
+              useNativeControls={true}
+              resizeMode="contain"
+            />
+          </View>
+        ))
+      )}
+
+      {videos.length > 0 && (
+        <TouchableOpacity style={styles.playButton} onPress={togglePlayback}>
+          <Ionicons
+            name={isPlaying ? "pause-circle" : "play-circle"}
+            size={40}
+            color="#FFFFFF"
+          />
+          <Text style={styles.playText}>
+            {isPlaying ? "Pause All" : "Play All"}
+          </Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -44,43 +72,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B0C10",
-    justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingTop: 40,
   },
-  video: {
-    width: "100%",
-    height: 300,
-    borderRadius: 16,
-    backgroundColor: "#1A1C21",
-  },
-  infoText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    marginTop: 20,
-    textAlign: "center",
-    fontFamily: "Orbitron-Regular",
-  },
-  warningText: {
-    color: "#FF2975",
-    fontSize: 18,
-    fontFamily: "Orbitron-Bold",
-    marginBottom: 20,
-  },
-  backButton: {
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1A1C21",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderColor: "#00FFF7",
-    borderWidth: 1,
+    marginBottom: 20,
   },
-  backButtonText: {
+  title: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  videoContainer: {
+    marginBottom: 20,
+    alignItems: "center",
+  },
+  playButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FF2975",
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    marginBottom: 30,
+  },
+  playText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+    marginLeft: 10,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontFamily: "Orbitron-Regular",
-    marginLeft: 10,
+    marginTop: 10,
   },
 });
