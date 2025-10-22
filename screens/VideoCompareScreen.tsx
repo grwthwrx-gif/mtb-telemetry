@@ -1,163 +1,200 @@
-import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Animated } from "react-native";
+import React, { useRef, useState, useEffect, useMemo } from "react";
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  Animated,
+  PanResponder,
+  Dimensions,
+} from "react-native";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import { useRoute, useNavigation } from "@react-navigation/native";
+
+const { width } = Dimensions.get("window");
 
 export default function VideoCompareScreen() {
-  const [video1Uri, setVideo1Uri] = useState<string | null>(null);
-  const [video2Uri, setVideo2Uri] = useState<string | null>(null);
-  const [isGhostMode, setIsGhostMode] = useState(false);
-  const [ghostTop, setGhostTop] = useState(true);
+  const route = useRoute<any>();
+  const navigation = useNavigation();
+  const videos = route.params?.videos || [];
+
+  const videoRef1 = useRef<Video>(null);
+  const videoRef2 = useRef<Video>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
+  const [opacityAnim] = useState(new Animated.Value(0.5));
+  const [scrubPos, setScrubPos] = useState(0);
+  const [duration, setDuration] = useState(1);
 
-  const video1Ref = useRef<Video>(null);
-  const video2Ref = useRef<Video>(null);
-
-  const fadeAnim = useRef(new Animated.Value(1)).current; // for smooth fade transitions
-
-  const toggleGhostMode = () => {
-    setIsGhostMode(!isGhostMode);
-  };
-
-  const toggleGhostPosition = () => {
-    setGhostTop(!ghostTop);
-  };
-
-  const playPause = async () => {
-    if (!video1Ref.current || !video2Ref.current) return;
-    if (isPlaying) {
-      await video1Ref.current.pauseAsync();
-      await video2Ref.current.pauseAsync();
+  // ───────────────────────────────
+  // PLAYBACK CONTROL
+  // ───────────────────────────────
+  const togglePlay = async () => {
+    if (!isPlaying) {
+      await videoRef1.current?.playAsync();
+      await videoRef2.current?.playAsync();
     } else {
-      const [status1, status2] = await Promise.all([
-        video1Ref.current.getStatusAsync(),
-        video2Ref.current.getStatusAsync(),
-      ]);
-
-      const minDuration = Math.min(status1.durationMillis || 0, status2.durationMillis || 0);
-      const minPosition = Math.min(status1.positionMillis || 0, status2.positionMillis || 0);
-      const offset = Math.abs(status1.positionMillis - status2.positionMillis);
-
-      // Align start points for sync
-      await Promise.all([
-        video1Ref.current.setPositionAsync(minPosition),
-        video2Ref.current.setPositionAsync(minPosition + offset),
-      ]);
-
-      await Promise.all([
-        video1Ref.current.playAsync(),
-        video2Ref.current.playAsync(),
-      ]);
+      await videoRef1.current?.pauseAsync();
+      await videoRef2.current?.pauseAsync();
     }
     setIsPlaying(!isPlaying);
   };
 
+  const syncVideos = async () => {
+    const status1 = await videoRef1.current?.getStatusAsync();
+    const status2 = await videoRef2.current?.getStatusAsync();
+    if (status1?.positionMillis && status2?.positionMillis) {
+      setScrubPos(status1.positionMillis / (status1.durationMillis || 1));
+      if (Math.abs(status1.positionMillis - status2.positionMillis) > 300) {
+        await videoRef2.current?.setPositionAsync(status1.positionMillis);
+      }
+    }
+  };
+
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: isGhostMode ? 0.6 : 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, [isGhostMode]);
+    let interval: NodeJS.Timeout;
+    if (isPlaying) {
+      interval = setInterval(syncVideos, 250);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying]);
 
+  // ───────────────────────────────
+  // GHOST BLEND SLIDER
+  // ───────────────────────────────
+  const panGhost = useRef(new Animated.Value(0)).current;
+  const sliderWidth = width * 0.8;
+
+  const ghostResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (_, gestureState) => {
+          let newX = Math.min(sliderWidth, Math.max(0, gestureState.dx + panGhost._value));
+          panGhost.setValue(newX);
+          opacityAnim.setValue(1 - newX / sliderWidth);
+        },
+      }),
+    []
+  );
+
+  // ───────────────────────────────
+  // SCRUBBER CONTROL
+  // ───────────────────────────────
+  const panScrub = useRef(new Animated.Value(0)).current;
+  const scrubWidth = width * 0.8;
+
+  const scrubResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: async () => {
+          await videoRef1.current?.pauseAsync();
+          await videoRef2.current?.pauseAsync();
+        },
+        onPanResponderMove: (_, gesture) => {
+          let newX = Math.min(scrubWidth, Math.max(0, gesture.dx + panScrub._value));
+          panScrub.setValue(newX);
+          const ratio = newX / scrubWidth;
+          setScrubPos(ratio);
+        },
+        onPanResponderRelease: async () => {
+          const targetTime = scrubPos * duration;
+          await videoRef1.current?.setPositionAsync(targetTime);
+          await videoRef2.current?.setPositionAsync(targetTime);
+          if (isPlaying) {
+            await videoRef1.current?.playAsync();
+            await videoRef2.current?.playAsync();
+          }
+        },
+      }),
+    [scrubPos, duration, isPlaying]
+  );
+
+  // ───────────────────────────────
+  // VIDEO SETUP
+  // ───────────────────────────────
+  const onVideoLoad = async (status: any) => {
+    if (status?.durationMillis) {
+      setDuration(status.durationMillis);
+    }
+  };
+
+  if (videos.length < 2) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Please select two videos first.</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("VideoSelection")}>
+          <Text style={styles.link}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ───────────────────────────────
+  // UI
+  // ───────────────────────────────
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerIcon}>
-        <Ionicons name="analytics-outline" size={30} color="#FFFFFF" />
+    <View style={styles.container}>
+      {/* Top (Ghost) video */}
+      <Animated.View style={[styles.videoWrapper, { opacity: opacityAnim }]}>
+        <Video
+          ref={videoRef1}
+          source={{ uri: videos[0] }}
+          style={styles.video}
+          resizeMode="cover"
+          shouldPlay={false}
+          useNativeControls={false}
+          onLoad={onVideoLoad}
+        />
+      </Animated.View>
+
+      {/* Bottom video */}
+      <Video
+        ref={videoRef2}
+        source={{ uri: videos[1] }}
+        style={styles.video}
+        resizeMode="cover"
+        shouldPlay={false}
+        useNativeControls={false}
+        onLoad={onVideoLoad}
+      />
+
+      {/* Controls */}
+      <View style={styles.controls}>
+        <TouchableOpacity style={styles.button} onPress={togglePlay}>
+          <Ionicons name={isPlaying ? "pause" : "play"} size={28} color="white" />
+          <Text style={styles.buttonText}>{isPlaying ? "Pause" : "Play"}</Text>
+        </TouchableOpacity>
       </View>
 
-      {!video1Uri || !video2Uri ? (
-        <View style={styles.centerContent}>
-          <Text style={styles.infoText}>
-            Please select two videos to begin comparison
-          </Text>
-          <TouchableOpacity style={styles.selectButton}>
-            <Text style={styles.buttonText}>Select Videos</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.videoContainer}>
-          {!isGhostMode ? (
-            <>
-              <Video
-                ref={video1Ref}
-                source={{ uri: video1Uri }}
-                style={styles.videoHalf}
-                resizeMode="cover"
-              />
-              <Video
-                ref={video2Ref}
-                source={{ uri: video2Uri }}
-                style={styles.videoHalf}
-                resizeMode="cover"
-              />
-            </>
-          ) : (
-            <View style={styles.overlayContainer}>
-              {ghostTop ? (
-                <>
-                  <Animated.View style={[styles.ghostVideo, { opacity: fadeAnim }]}>
-                    <Video
-                      ref={video1Ref}
-                      source={{ uri: video1Uri }}
-                      style={styles.fullVideo}
-                      resizeMode="cover"
-                    />
-                  </Animated.View>
-                  <Video
-                    ref={video2Ref}
-                    source={{ uri: video2Uri }}
-                    style={styles.fullVideo}
-                    resizeMode="cover"
-                  />
-                </>
-              ) : (
-                <>
-                  <Animated.View style={[styles.ghostVideo, { opacity: fadeAnim }]}>
-                    <Video
-                      ref={video2Ref}
-                      source={{ uri: video2Uri }}
-                      style={styles.fullVideo}
-                      resizeMode="cover"
-                    />
-                  </Animated.View>
-                  <Video
-                    ref={video1Ref}
-                    source={{ uri: video1Uri }}
-                    style={styles.fullVideo}
-                    resizeMode="cover"
-                  />
-                </>
-              )}
-            </View>
-          )}
-        </View>
-      )}
-
-      <View style={styles.controlsContainer}>
-        <TouchableOpacity style={styles.iconButton} onPress={playPause}>
-          <Ionicons name={isPlaying ? "pause" : "play"} size={28} color="#FFF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.iconButton} onPress={toggleGhostMode}>
-          <Ionicons
-            name={isGhostMode ? "layers" : "layers-outline"}
-            size={28}
-            color="#FFF"
+      {/* Ghost blend slider */}
+      <View style={styles.sliderContainer}>
+        <Text style={styles.sliderLabel}>Ghost Blend</Text>
+        <View style={styles.sliderTrack}>
+          <Animated.View
+            {...ghostResponder.panHandlers}
+            style={[styles.sliderThumb, { transform: [{ translateX: panGhost }] }]}
           />
-        </TouchableOpacity>
-
-        {isGhostMode && (
-          <TouchableOpacity style={styles.iconButton} onPress={toggleGhostPosition}>
-            <Ionicons
-              name="swap-vertical-outline"
-              size={28}
-              color="#FFF"
-            />
-          </TouchableOpacity>
-        )}
+        </View>
       </View>
-    </SafeAreaView>
+
+      {/* Timeline scrubber */}
+      <View style={styles.sliderContainer}>
+        <Text style={styles.sliderLabel}>Timeline</Text>
+        <View style={styles.sliderTrack}>
+          <Animated.View
+            {...scrubResponder.panHandlers}
+            style={[
+              styles.scrubThumb,
+              { transform: [{ translateX: Animated.multiply(scrubPos, scrubWidth) }] },
+            ]}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -168,68 +205,66 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerIcon: {
-    position: "absolute",
-    top: 60,
-    left: "50%",
-    transform: [{ translateX: -15 }],
-  },
-  centerContent: {
-    alignItems: "center",
-    marginTop: "38%",
-  },
-  infoText: {
-    color: "#FFF",
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  selectButton: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 14,
-    paddingHorizontal: 26,
-    borderRadius: 10,
-  },
-  buttonText: {
-    color: "#FFF",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  videoContainer: {
+  videoWrapper: {
+    width: "100%",
     flex: 1,
+  },
+  video: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#111",
+  },
+  controls: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     width: "100%",
+    paddingVertical: 20,
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  videoHalf: {
-    width: "50%",
-    height: "100%",
-  },
-  overlayContainer: {
-    flex: 1,
-    width: "100%",
-    position: "relative",
-  },
-  fullVideo: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-  },
-  ghostVideo: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-  },
-  controlsContainer: {
-    position: "absolute",
-    bottom: 90,
+  button: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
     flexDirection: "row",
-    justifyContent: "space-around",
-    width: "60%",
+    alignItems: "center",
+    gap: 8,
   },
-  iconButton: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    padding: 14,
-    borderRadius: 50,
+  buttonText: { color: "white", fontSize: 16 },
+  errorText: { color: "#fff", fontSize: 18, marginBottom: 20 },
+  link: { color: "#00FFF7", textDecorationLine: "underline" },
+  sliderContainer: {
+    width: "100%",
+    alignItems: "center",
+    paddingBottom: 25,
+  },
+  sliderLabel: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  sliderTrack: {
+    width: "80%",
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  sliderThumb: {
+    position: "absolute",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#00FFF7",
+    top: -10,
+  },
+  scrubThumb: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#FF2975",
+    top: -6,
   },
 });
