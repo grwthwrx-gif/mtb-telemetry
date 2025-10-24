@@ -1,85 +1,147 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { Video } from "expo-av";
-import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
 
-export default function VideoSelectionScreen() {
-  const navigation = useNavigation<any>();
-  const [videos, setVideos] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function VideoSelectionScreen({ navigation }) {
+  const [videos, setVideos] = useState<{ uri: string; thumb: string | null }[]>([]);
+  const [loadingIndex, setLoadingIndex] = useState<number | null>(null);
 
   const pickVideo = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsMultipleSelection: false,
-        quality: 1,
-      });
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      alert("Permission to access videos is required.");
+      return;
+    }
 
-      if (!result.canceled && result.assets?.length > 0) {
-        const selectedUri = result.assets[0].uri;
-        setVideos((prev) => (prev.length < 2 ? [...prev, selectedUri] : prev));
-      }
-    } catch (err) {
-      console.log("Video pick error:", err);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      const selected = result.assets.map((a) => ({
+        uri: a.uri,
+        thumb: a.uri, // we can later replace this with generated thumbnails
+      }));
+      setVideos(selected);
     }
   };
 
   const startComparison = () => {
-    if (videos.length === 2) {
-      navigation.navigate("VideoCompare", { videos });
+    if (videos.length < 2) {
+      alert("Please select at least two videos to compare.");
+      return;
     }
+    navigation.navigate("CompareVideos", { videos });
   };
 
   return (
     <View style={styles.container}>
-      <Ionicons name="videocam" size={64} color="white" style={styles.iconTop} />
-      <Text style={styles.title}>Select Two Videos</Text>
-
-      <TouchableOpacity style={styles.button} onPress={pickVideo} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>+ Select Video</Text>}
-      </TouchableOpacity>
-
-      <View style={styles.previewContainer}>
-        {videos.map((uri, index) => (
-          <Video
-            key={index}
-            source={{ uri }}
-            style={styles.videoPreview}
-            resizeMode="cover"
-            useNativeControls
-            shouldPlay={false}
-          />
-        ))}
+      <View style={styles.headerIconContainer}>
+        <Text style={styles.headerIcon}>🎬</Text>
       </View>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Select Your Runs</Text>
 
-      <TouchableOpacity
-        style={[styles.startButton, videos.length < 2 && { opacity: 0.4 }]}
-        disabled={videos.length < 2}
-        onPress={startComparison}
-      >
-        <Text style={styles.startButtonText}>Start Comparison</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.selectButton} onPress={pickVideo}>
+          <Text style={styles.selectText}>Select Videos</Text>
+        </TouchableOpacity>
+
+        <View style={styles.videoList}>
+          {videos.map((vid, index) => (
+            <View key={index} style={styles.videoContainer}>
+              {loadingIndex === index ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Image
+                  source={{ uri: vid.thumb }}
+                  style={styles.thumbnail}
+                  onLoadStart={() => setLoadingIndex(index)}
+                  onLoadEnd={() => setLoadingIndex(null)}
+                />
+              )}
+              <Text style={styles.videoText}>Run {index + 1}</Text>
+            </View>
+          ))}
+        </View>
+
+        <TouchableOpacity style={styles.compareButton} onPress={startComparison}>
+          <Text style={styles.compareText}>Start Comparison</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0B0C10", alignItems: "center", justifyContent: "flex-start", paddingTop: 100 },
-  title: { color: "white", fontSize: 22, marginVertical: 20 },
-  iconTop: { marginBottom: 10 },
-  button: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    marginBottom: 30,
+  container: {
+    flex: 1,
+    backgroundColor: "#0B0C10",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  buttonText: { color: "white", fontWeight: "600", fontSize: 16 },
-  previewContainer: { flexDirection: "row", justifyContent: "center", gap: 10, marginBottom: 40 },
-  videoPreview: { width: 140, height: 100, backgroundColor: "#111", borderRadius: 6 },
-  startButton: { backgroundColor: "rgba(255,255,255,0.25)", borderRadius: 8, paddingVertical: 16, paddingHorizontal: 40 },
-  startButtonText: { color: "white", fontSize: 18, fontWeight: "bold" },
+  scrollContainer: {
+    alignItems: "center",
+    paddingBottom: 40,
+  },
+  headerIconContainer: {
+    marginTop: 60,
+    marginBottom: 10,
+  },
+  headerIcon: {
+    fontSize: 32,
+    color: "#FFFFFF",
+    opacity: 0.9,
+  },
+  title: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "700",
+    marginVertical: 10,
+  },
+  selectButton: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    marginTop: 40,
+  },
+  selectText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  videoList: {
+    marginTop: 30,
+    width: "90%",
+    alignItems: "center",
+  },
+  videoContainer: {
+    marginBottom: 20,
+    alignItems: "center",
+  },
+  thumbnail: {
+    width: 300,
+    height: 170,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  videoText: {
+    color: "#FFFFFF",
+    marginTop: 5,
+    fontSize: 14,
+  },
+  compareButton: {
+    marginTop: 20,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+  },
+  compareText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });
