@@ -1,3 +1,4 @@
+// @ts-nocheck
 // app.config.js
 const fs = require('fs');
 const path = require('path');
@@ -24,7 +25,7 @@ function bumpBuildNumbers() {
 
 const { buildNumber, versionCode } = bumpBuildNumbers();
 
-export default {
+module..exports = {
   expo: {
     name: 'mtb-telemetry',
     slug: 'mtb-telemetry',
