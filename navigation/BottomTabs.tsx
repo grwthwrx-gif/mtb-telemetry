@@ -1,6 +1,7 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { View, StyleSheet } from "react-native";
 import VideoSelectionScreen from "../screens/VideoSelectionScreen";
 import VideoCompareScreen from "../screens/VideoCompareScreen";
 import CustomParallelTracksIcon from "../components/CustomParallelTracksIcon";
@@ -16,7 +17,7 @@ export default function BottomTabs() {
         tabBarActiveTintColor: "#FFFFFF",
         tabBarInactiveTintColor: "rgba(255,255,255,0.5)",
         tabBarStyle: {
-          backgroundColor: "rgba(255,255,255,0.1)", // semi-transparent white
+          backgroundColor: "rgba(255,255,255,0.1)",
           borderTopColor: "transparent",
           height: 75,
           position: "absolute",
@@ -30,17 +31,17 @@ export default function BottomTabs() {
           shadowRadius: 8,
         },
         tabBarIcon: ({ color, size, focused }) => {
+          let icon;
           if (route.name === "VideoSelection") {
-            return (
+            icon = (
               <Ionicons
                 name="film-outline"
                 size={focused ? size + 4 : size}
                 color={color}
               />
             );
-          }
-          if (route.name === "VideoCompare") {
-            return (
+          } else if (route.name === "VideoCompare") {
+            icon = (
               <CustomParallelTracksIcon
                 size={focused ? size + 6 : size + 2}
                 color={color as string}
@@ -48,7 +49,11 @@ export default function BottomTabs() {
               />
             );
           }
-          return <Ionicons name="ellipse-outline" size={size} color={color} />;
+
+          // Add soft white glow for active icon
+          return (
+            <View style={focused ? styles.activeGlow : null}>{icon}</View>
+          );
         },
       })}
     >
@@ -57,3 +62,11 @@ export default function BottomTabs() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  activeGlow: {
+    shadowColor: "#FFFFFF",
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+  },
+});
