@@ -1,24 +1,31 @@
 // @ts-nocheck
-// app.config.js
+// app.config.js — auto-bump build numbers on every EAS Build
+
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Always increment build numbers before each build.
+ * This runs every time Expo reads app.config.js (including during EAS Build).
+ */
 function bumpBuildNumbers() {
   const versionFile = path.join(__dirname, 'build-info.json');
-  let info = { buildNumber: 6, versionCode: 6 };
+  let info = { buildNumber: 1, versionCode: 1 };
 
-  if (fs.existsSync(versionFile)) {
-    try {
+  try {
+    if (fs.existsSync(versionFile)) {
       info = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
-      info.buildNumber += 1;
-      info.versionCode += 1;
-    } catch {
-      console.warn('⚠️ Could not parse build-info.json, resetting counters.');
     }
+    info.buildNumber += 1;
+    info.versionCode += 1;
+  } catch {
+    console.warn('⚠️ Could not read build-info.json, resetting counters.');
   }
 
   fs.writeFileSync(versionFile, JSON.stringify(info, null, 2));
-  console.log(`✅ Bumped iOS buildNumber → ${info.buildNumber}, Android versionCode → ${info.versionCode}`);
+  console.log(
+    `✅ Auto-bumped → iOS buildNumber ${info.buildNumber}, Android versionCode ${info.versionCode}`
+  );
 
   return info;
 }
@@ -33,12 +40,15 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/icons/psynk/icon_square_1024.png',
     userInterfaceStyle: 'dark',
+
     splash: {
       image: './assets/images/psynk/splash_dark_2048.png',
       resizeMode: 'contain',
       backgroundColor: '#0B0C10'
     },
+
     assetBundlePatterns: ['**/*'],
+
     ios: {
       supportsTablet: true,
       buildNumber: String(buildNumber),
@@ -47,17 +57,20 @@ module.exports = {
         ITSAppUsesNonExemptEncryption: false
       }
     },
+
     android: {
       package: 'com.grthwrx.psynk',
       adaptiveIcon: {
         foregroundImage: './assets/icons/psynk/icon_square_512.png',
         backgroundColor: '#0B0C10'
       },
-      versionCode: versionCode
+      versionCode
     },
+
     web: {
       favicon: './assets/icons/psynk/icon_square_512.png'
     },
+
     plugins: [
       [
         'expo-font',
@@ -69,18 +82,22 @@ module.exports = {
         }
       ]
     ],
+
     extra: {
       eas: {
         projectId: '23c8c4dd-8c23-4489-aa30-4ea549424045'
       }
     },
+
     updates: {
       enabled: true,
       checkAutomatically: 'ON_ERROR_RECOVERY'
     },
+
     runtimeVersion: {
       policy: 'appVersion'
     },
+
     jsEngine: 'jsc'
   }
 };
