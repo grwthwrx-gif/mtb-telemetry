@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 11.0.0"
+    "version": ">= 11.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -16,8 +17,19 @@
       }
     },
     "production": {
+      "distribution": "app-store",
       "ios": {
         "simulator": false
+      },
+      "android": {
+        "gradleCommand": ":app:bundleRelease"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": null
       }
     }
   }
