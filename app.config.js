@@ -25,7 +25,7 @@ function bumpBuildNumbers() {
 
 const { buildNumber, versionCode } = bumpBuildNumbers();
 
-module..exports = {
+module.exports = {
   expo: {
     name: 'mtb-telemetry',
     slug: 'mtb-telemetry',
