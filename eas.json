@@ -17,7 +17,7 @@
       }
     },
     "production": {
-      "distribution": "app-store",
+      "distribution": "store",
       "ios": {
         "simulator": false
       },
@@ -29,7 +29,7 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": null
+        "ascAppId": ""
       }
     }
   }
