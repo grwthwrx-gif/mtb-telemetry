@@ -49,8 +49,6 @@ export default function BottomTabs() {
               />
             );
           }
-
-          // Add soft white glow for active icon
           return (
             <View style={focused ? styles.activeGlow : null}>{icon}</View>
           );
