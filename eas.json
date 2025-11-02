@@ -17,12 +17,14 @@
       }
     },
     "production": {
-      "distribution": "store",
+      "distribution": "app-store",
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "autoIncrement": true
       },
       "android": {
-        "gradleCommand": ":app:bundleRelease"
+        "gradleCommand": ":app:bundleRelease",
+        "autoIncrement": true
       }
     }
   },
