@@ -17,7 +17,7 @@
       }
     },
     "production": {
-      "distribution": "app-store",
+      "distribution": "store",
       "ios": {
         "simulator": false,
         "autoIncrement": true
