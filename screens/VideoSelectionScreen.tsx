@@ -18,6 +18,7 @@ export default function VideoSelectionScreen() {
   const [videos, setVideos] = useState<string[]>([]);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [thumbLoading, setThumbLoading] = useState(false);
   const navigation = useNavigation();
 
   const handleSelectVideos = async () => {
@@ -39,19 +40,24 @@ export default function VideoSelectionScreen() {
         const chosen = result.assets.slice(0, 2);
         const uris = chosen.map((item) => item.uri);
         setVideos(uris);
+        setThumbnails([]);
+        setThumbLoading(true);
 
-        const thumbs: string[] = [];
-        for (let uri of uris) {
-          try {
-            const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(uri, {
-              time: 800,
-            });
-            thumbs.push(thumb);
-          } catch {
-            thumbs.push("");
-          }
-        }
-        setThumbnails(thumbs);
+        Promise.all(
+          uris.map(async (uri) => {
+            try {
+              const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(
+                uri,
+                { time: 800, quality: 0.5 }
+              );
+              return thumb;
+            } catch {
+              return "";
+            }
+          })
+        )
+          .then((thumbs) => setThumbnails(thumbs))
+          .finally(() => setThumbLoading(false));
       }
     } catch (err) {
       console.error(err);
@@ -66,9 +72,8 @@ export default function VideoSelectionScreen() {
       Alert.alert("Select 2 Videos", "Please select two runs to compare.");
       return;
     }
-    // Corrected route name to match your Compare screen
     navigation.navigate(
-      "VideoCompareScreen" as never,
+      "VideoCompare" as never,
       { video1: videos[0], video2: videos[1] } as never
     );
   };
@@ -94,6 +99,11 @@ export default function VideoSelectionScreen() {
       <View style={styles.videoContainer}>
         {loading ? (
           <ActivityIndicator size="large" color="#FFF" />
+        ) : thumbLoading ? (
+          <View style={{ alignItems: "center", marginTop: 10 }}>
+            <ActivityIndicator size="small" color="#FFF" />
+            <Text style={styles.loadingText}>generating thumbnails…</Text>
+          </View>
         ) : (
           videos.map((uri, idx) => (
             <View key={idx} style={styles.videoBlock}>
@@ -166,6 +176,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+    textTransform: "lowercase",
+  },
+  loadingText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    marginTop: 6,
+    opacity: 0.8,
     textTransform: "lowercase",
   },
   videoContainer: { alignItems: "center", justifyContent: "center" },
