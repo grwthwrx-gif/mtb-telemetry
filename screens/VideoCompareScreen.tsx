@@ -5,132 +5,109 @@ import {
   TouchableOpacity,
   Text,
   Dimensions,
-  TouchableWithoutFeedback,
+  Pressable,
 } from "react-native";
 import Slider from "@react-native-community/slider";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import { useRoute, useNavigation } from "@react-navigation/native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withRepeat,
-  FadeIn,
-  FadeOut,
 } from "react-native-reanimated";
+import { useRoute, useNavigation } from "@react-navigation/native";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function VideoCompareScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { video1, video2 } = route.params as { video1: string; video2: string };
 
+  // Refs for both video players
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
-  const [offset, setOffset] = useState(0);
-  const [statusText, setStatusText] = useState("psynk & play");
-  const [elapsed, setElapsed] = useState(0);
+  // Playback + UI state
+  const [isSetupMode, setIsSetupMode] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [lastTimestamp, setLastTimestamp] = useState<number | null>(null);
-  const [ghostTop, setGhostTop] = useState<"first" | "second">("first");
+  const [ghostMode, setGhostMode] = useState(false);
+  const [swapVertical, setSwapVertical] = useState(false); // for vertical stack
+  const [swapGhost, setSwapGhost] = useState(false); // for overlay order
+  const [offset, setOffset] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1.0);
 
-  const overlayVisible = useSharedValue(1);
-  const ghost = useSharedValue(0);
-  const video1Y = useSharedValue(0);
-  const video2Y = useSharedValue(SCREEN_HEIGHT / 2);
-  const video1H = useSharedValue(SCREEN_HEIGHT / 2);
-  const video2H = useSharedValue(SCREEN_HEIGHT / 2);
-  const videoOpacity1 = useSharedValue(1);
-  const videoOpacity2 = useSharedValue(1);
-  const spin = useSharedValue(0);
+  // Reanimated shared value for fading controls
+  const controlsOpacity = useSharedValue(1);
 
+  // Handle auto-hide controls timer
+  useEffect(() => {
+    if (!isSetupMode && controlsVisible) {
+      controlsOpacity.value = withTiming(1, { duration: 300 });
+      const timeout = setTimeout(() => {
+        controlsOpacity.value = withTiming(0.2, { duration: 600 });
+        setControlsVisible(false);
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [controlsVisible, isSetupMode]);
+
+  const animatedControlsStyle = useAnimatedStyle(() => ({
+    opacity: controlsOpacity.value,
+  }));
+
+  // Keep elapsed time synced with actual video position
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isPlaying && player1.current) {
+      interval = setInterval(async () => {
+        const status = await player1.current?.getStatusAsync();
+        if (status?.positionMillis) {
+          setElapsed(status.positionMillis / 1000);
+        }
+      }, 250);
+    } else {
+      if (interval) clearInterval(interval);
+    }
+    return () => interval && clearInterval(interval);
+  }, [isPlaying]);
+
+  // Format elapsed time
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
-  /** ─────────────────────────────── PSYNK ─────────────────────────────── **/
+  // Reset both players and psynk
   const handlePsynkPlay = async () => {
     try {
-      setStatusText("psynking …");
-      setElapsed(0);
-      setLastTimestamp(null);
-      spin.value = withRepeat(withTiming(1, { duration: 1200 }), -1, false);
-
       await player1.current?.setPositionAsync(0);
       await player2.current?.setPositionAsync(0);
-      if (offset > 0) await player2.current?.setPositionAsync(offset * 1000);
-      else if (offset < 0)
-        await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
 
+      // Apply offset to second video
+      if (offset > 0) {
+        await player2.current?.setPositionAsync(offset * 1000);
+      } else if (offset < 0) {
+        await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+      }
+
+      // Switch to playback mode
+      setIsSetupMode(false);
       await Promise.all([
         player1.current?.playAsync(),
         player2.current?.playAsync(),
       ]);
       setIsPlaying(true);
-
-      setTimeout(() => {
-        spin.value = 0;
-        setStatusText("psynked");
-        setTimeout(() => setStatusText("psynk & play"), 2500);
-      }, 1800);
+      setElapsed(0);
+      setControlsVisible(true);
     } catch (e) {
       console.error(e);
-      spin.value = 0;
-      setStatusText("error ⚠️");
     }
   };
 
-  /** ─────────────────────────────── GHOST ─────────────────────────────── **/
-  const toggleGhost = () => {
-    const next = ghost.value === 0 ? 1 : 0;
-    ghost.value = withTiming(next, { duration: 500 });
-
-    if (next === 1) {
-      // full-screen overlay
-      video1Y.value = withTiming(0, { duration: 500 });
-      video2Y.value = withTiming(0, { duration: 500 });
-      video1H.value = withTiming(SCREEN_HEIGHT, { duration: 500 });
-      video2H.value = withTiming(SCREEN_HEIGHT, { duration: 500 });
-
-      if (ghostTop === "first") {
-        videoOpacity1.value = withTiming(1, { duration: 400 });
-        videoOpacity2.value = withTiming(0.4, { duration: 400 });
-      } else {
-        videoOpacity1.value = withTiming(0.4, { duration: 400 });
-        videoOpacity2.value = withTiming(1, { duration: 400 });
-      }
-    } else {
-      // restore vertical split
-      video1Y.value = withTiming(0, { duration: 500 });
-      video2Y.value = withTiming(SCREEN_HEIGHT / 2, { duration: 500 });
-      video1H.value = withTiming(SCREEN_HEIGHT / 2, { duration: 500 });
-      video2H.value = withTiming(SCREEN_HEIGHT / 2, { duration: 500 });
-      videoOpacity1.value = withTiming(1, { duration: 400 });
-      videoOpacity2.value = withTiming(1, { duration: 400 });
-    }
-  };
-
-  const swapGhostOrder = () => {
-    if (ghost.value === 1) {
-      setGhostTop((p) => (p === "first" ? "second" : "first"));
-      const nextTop = ghostTop === "first" ? "second" : "first";
-      if (nextTop === "first") {
-        videoOpacity1.value = withTiming(1, { duration: 400 });
-        videoOpacity2.value = withTiming(0.4, { duration: 400 });
-      } else {
-        videoOpacity1.value = withTiming(0.4, { duration: 400 });
-        videoOpacity2.value = withTiming(1, { duration: 400 });
-      }
-    }
-  };
-
-  /** ───────────────────────────── PLAYBACK ───────────────────────────── **/
   const handlePlayPause = async () => {
     if (isPlaying) {
       await player1.current?.pauseAsync();
@@ -141,155 +118,76 @@ export default function VideoCompareScreen() {
       await player2.current?.playAsync();
       setIsPlaying(true);
     }
-    showOverlay();
+    setControlsVisible(true);
   };
 
   const handleStep = async (delta: number) => {
     const s1 = await player1.current?.getStatusAsync();
-    const s2 = await player2.current?.getStatusAsync();
-    if (s1?.positionMillis && s2?.positionMillis) {
-      const new1 = Math.max(0, s1.positionMillis + delta * 1000);
-      const new2 = Math.max(0, s2.positionMillis + delta * 1000);
-      await player1.current?.setPositionAsync(new1);
-      await player2.current?.setPositionAsync(new2);
-    }
-    showOverlay();
+    const newPos = Math.max(0, (s1?.positionMillis ?? 0) + delta * 1000);
+    await player1.current?.setPositionAsync(newPos);
+    await player2.current?.setPositionAsync(newPos);
+    setControlsVisible(true);
   };
 
-  const toggleSpeed = async (rate: number) => {
+  const handleRateChange = async (rate: number) => {
+    setPlaybackRate(rate);
     await player1.current?.setRateAsync(rate, true);
     await player2.current?.setRateAsync(rate, true);
-    setPlaybackRate(rate);
-    showOverlay();
+    setControlsVisible(true);
   };
 
-  const showOverlay = () => {
-    overlayVisible.value = withTiming(1, { duration: 250 });
-    setTimeout(() => {
-      overlayVisible.value = withTiming(0, { duration: 400 });
-    }, 3000);
+  const handleToggleGhost = () => {
+    setGhostMode((prev) => !prev);
+    setControlsVisible(true);
   };
 
-  /** ───────────────────────────── TIMER ───────────────────────────── **/
-  useEffect(() => {
-    let frame: number;
-    const update = (t: number) => {
-      if (isPlaying) {
-        if (lastTimestamp != null) {
-          const d = (t - lastTimestamp) / 1000;
-          setElapsed((p) => p + d * playbackRate);
-        }
-        setLastTimestamp(t);
-      } else setLastTimestamp(null);
-      frame = requestAnimationFrame(update);
-    };
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
-  }, [isPlaying, playbackRate, lastTimestamp]);
+  const handleSwap = () => {
+    if (ghostMode) {
+      setSwapGhost((p) => !p);
+    } else {
+      setSwapVertical((p) => !p);
+    }
+    setControlsVisible(true);
+  };
 
-  /** ───────────────────────────── CLEANUP ───────────────────────────── **/
-  useEffect(() => {
-    return () => {
-      player1.current?.pauseAsync();
-      player2.current?.pauseAsync();
-    };
-  }, []);
+  const handleBackToSetup = async () => {
+    await player1.current?.pauseAsync();
+    await player2.current?.pauseAsync();
+    setIsPlaying(false);
+    setIsSetupMode(true);
+    setControlsVisible(true);
+  };
 
-  /** ───────────────────────────── STYLES ───────────────────────────── **/
-  const a1 = useAnimatedStyle(() => ({
-    transform: [{ translateY: video1Y.value }],
-    height: video1H.value,
-    opacity: videoOpacity1.value,
-  }));
-  const a2 = useAnimatedStyle(() => ({
-    transform: [{ translateY: video2Y.value }],
-    height: video2H.value,
-    opacity: videoOpacity2.value,
-  }));
-  const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayVisible.value }));
-
-  /** ───────────────────────────── RENDER ───────────────────────────── **/
+  // Allow tap anywhere to reveal controls
+  const handleTapScreen = () => {
+    controlsOpacity.value = withTiming(1, { duration: 300 });
+    setControlsVisible(true);
+  };
+  
   return (
-    <TouchableWithoutFeedback onPress={showOverlay}>
-      <View style={styles.container}>
-        <Animated.View style={[styles.videoWrap, a1]}>
-          <Video
-            ref={player1}
-            source={{ uri: video1 }}
-            style={styles.video}
-            resizeMode="cover"
-          />
-        </Animated.View>
-        <Animated.View style={[styles.videoWrap, a2]}>
-          <Video
-            ref={player2}
-            source={{ uri: video2 }}
-            style={styles.video}
-            resizeMode="cover"
-          />
-        </Animated.View>
-
-        {/* elapsed time */}
-        <View style={styles.elapsed}>
-          <Text style={styles.elapsedTxt}>{formatTime(elapsed)}</Text>
-        </View>
-
-        {/* playback overlay */}
-        <Animated.View
-          style={[styles.playback, overlayStyle]}
-          entering={FadeIn.duration(400)}
-          exiting={FadeOut.duration(300)}
-        >
-          <TouchableOpacity onPress={() => handleStep(-0.5)} style={styles.iconBtn}>
-            <Ionicons name="play-back-outline" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handlePlayPause} style={styles.iconBtn}>
-            <Ionicons
-              name={isPlaying ? "pause-circle-outline" : "play-circle-outline"}
-              size={50}
-              color="#fff"
+    <Pressable style={styles.container} onPress={handleTapScreen}>
+      {/* === SETUP MODE === */}
+      {isSetupMode ? (
+        <View style={styles.setupContainer}>
+          <View style={styles.videosStack}>
+            <Video
+              ref={player1}
+              source={{ uri: video1 }}
+              style={styles.videoHalf}
+              useNativeControls
+              resizeMode="contain"
             />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleStep(0.5)} style={styles.iconBtn}>
-            <Ionicons name="play-forward-outline" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => toggleSpeed(0.5)}
-            style={[
-              styles.iconBtn,
-              playbackRate === 0.5 && styles.activeTxt,
-            ]}
-          >
-            <Text style={styles.spd}>½×</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => toggleSpeed(0.25)}
-            style={[
-              styles.iconBtn,
-              playbackRate === 0.25 && styles.activeTxt,
-            ]}
-          >
-            <Text style={styles.spd}>¼×</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* bottom controls */}
-        <View style={styles.bottom}>
-          <View style={styles.leftGroup}>
-            <TouchableOpacity onPress={toggleGhost} style={styles.btn}>
-              <Ionicons name="layers-outline" size={24} color="#fff" />
-            </TouchableOpacity>
-            {ghost.value === 1 && (
-              <TouchableOpacity onPress={swapGhostOrder} style={styles.btn}>
-                <Ionicons name="swap-vertical-outline" size={24} color="#fff" />
-              </TouchableOpacity>
-            )}
+            <Video
+              ref={player2}
+              source={{ uri: video2 }}
+              style={styles.videoHalf}
+              useNativeControls
+              resizeMode="contain"
+            />
           </View>
 
-          <View style={styles.centerGroup}>
-            <Text style={styles.sliderLbl}>
-              psynk offset: {offset.toFixed(2)} s
-            </Text>
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>Psynk Offset</Text>
             <Slider
               style={styles.slider}
               minimumValue={-3}
@@ -298,97 +196,255 @@ export default function VideoCompareScreen() {
               value={offset}
               onValueChange={setOffset}
               minimumTrackTintColor="#fff"
-              maximumTrackTintColor="rgba(255,255,255,0.3)"
+              maximumTrackTintColor="#444"
               thumbTintColor="#fff"
             />
-            <TouchableOpacity onPress={handlePsynkPlay} style={styles.psynkBtn}>
-              <Animated.View
-                style={{ transform: [{ rotate: `${spin.value * 360}deg` }] }}
-              >
-                <Ionicons
-                  name={
-                    statusText.includes("psynking")
-                      ? "sync-outline"
-                      : statusText.includes("psynked")
-                      ? "checkmark-outline"
-                      : "play-circle-outline"
-                  }
-                  size={60}
-                  color="#fff"
-                />
-              </Animated.View>
-              <Text style={styles.psynkTxt}>{statusText}</Text>
-            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.btn}>
-            <Ionicons name="arrow-back-outline" size={24} color="#fff" />
+          <TouchableOpacity style={styles.psynkButton} onPress={handlePsynkPlay}>
+            <Ionicons name="play-circle-outline" size={70} color="#fff" />
           </TouchableOpacity>
         </View>
-      </View>
-    </TouchableWithoutFeedback>
+      ) : (
+        /* === PLAYBACK MODE === */
+        <View style={styles.playbackContainer}>
+          {/* Videos */}
+          {!ghostMode ? (
+            <>
+              <Video
+                ref={player1}
+                source={{ uri: video1 }}
+                style={[
+                  styles.videoFull,
+                  swapVertical ? styles.bottomVideo : styles.topVideo,
+                ]}
+                resizeMode="contain"
+              />
+              <Video
+                ref={player2}
+                source={{ uri: video2 }}
+                style={[
+                  styles.videoFull,
+                  swapVertical ? styles.topVideo : styles.bottomVideo,
+                ]}
+                resizeMode="contain"
+              />
+            </>
+          ) : (
+            <>
+              {swapGhost ? (
+                <>
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={[styles.videoOverlay, { opacity: 0.4 }]}
+                    resizeMode="contain"
+                  />
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={styles.videoOverlay}
+                    resizeMode="contain"
+                  />
+                </>
+              ) : (
+                <>
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={[styles.videoOverlay, { opacity: 0.4 }]}
+                    resizeMode="contain"
+                  />
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={styles.videoOverlay}
+                    resizeMode="contain"
+                  />
+                </>
+              )}
+            </>
+          )}
+
+          {/* Elapsed Time */}
+          <View style={styles.elapsedOverlay}>
+            <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
+          </View>
+
+          {/* Controls Overlay */}
+          <Animated.View style={[styles.controlsOverlay, animatedControlsStyle]}>
+            <View style={styles.playbackRow}>
+              <TouchableOpacity onPress={() => handleStep(-0.5)}>
+                <Ionicons name="play-back-outline" size={34} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handlePlayPause}>
+                <Ionicons
+                  name={
+                    isPlaying ? "pause-circle-outline" : "play-circle-outline"
+                  }
+                  size={52}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => handleStep(0.5)}>
+                <Ionicons name="play-forward-outline" size={34} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => handleRateChange(0.5)}>
+                <Text style={styles.rateText}>½×</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleRateChange(0.25)}>
+                <Text style={styles.rateText}>¼×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.lowerControls}>
+              <View style={styles.leftControls}>
+                <TouchableOpacity onPress={handleToggleGhost}>
+                  <Ionicons
+                    name="layers-outline"
+                    size={28}
+                    color={ghostMode ? "#fff" : "rgba(255,255,255,0.7)"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSwap}>
+                  <Ionicons name="swap-vertical-outline" size={28} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity onPress={handleBackToSetup}>
+                <Ionicons name="arrow-undo-outline" size={30} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0B0C10" },
-  videoWrap: { position: "absolute", width: "100%", overflow: "hidden" },
-  video: { width: "100%", height: "100%" },
-  elapsed: {
+  container: {
+    flex: 1,
+    backgroundColor: "#0B0C10",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // === SETUP MODE ===
+  setupContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 40,
+  },
+  videosStack: {
+    width: "100%",
+    alignItems: "center",
+  },
+  videoHalf: {
+    width: "90%",
+    height: SCREEN_HEIGHT * 0.3,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    marginVertical: 8,
+  },
+  sliderContainer: {
+    width: "85%",
+    marginTop: 20,
+  },
+  sliderLabel: {
+    color: "#fff",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+    textTransform: "none",
+  },
+  slider: {
+    width: "100%",
+    height: 40,
+  },
+  psynkButton: {
+    marginTop: 10,
+  },
+
+  // === PLAYBACK MODE ===
+  playbackContainer: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  videoFull: {
+    width: "100%",
+    height: SCREEN_HEIGHT / 2,
     position: "absolute",
-    top: 40,
+  },
+  topVideo: {
+    top: 0,
+  },
+  bottomVideo: {
+    bottom: 0,
+  },
+  videoOverlay: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+  },
+
+  // === ELAPSED TIME ===
+  elapsedOverlay: {
+    position: "absolute",
+    top: 30,
     right: 20,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  elapsedTxt: {
-    fontFamily: "Orbitron",
+  elapsedText: {
     color: "#fff",
-    fontSize: 18,
-    letterSpacing: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    textShadowColor: "rgba(255,255,255,0.6)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
-  playback: {
+
+  // === CONTROLS ===
+  controlsOverlay: {
     position: "absolute",
-    bottom: 110,
-    left: 0,
-    right: 0,
+    bottom: 40,
+    width: "100%",
+    alignItems: "center",
+  },
+  playbackRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.25)",
-    borderRadius: 16,
-    marginHorizontal: 20,
-    paddingVertical: 8,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 40,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginBottom: 15,
   },
-  iconBtn: { marginHorizontal: 8 },
-  spd: { color: "#fff", fontFamily: "Orbitron-Bold", fontSize: 16 },
-  activeTxt: { textShadowColor: "#fff", textShadowRadius: 8 },
-  bottom: {
-    position: "absolute",
-    bottom: 25,
-    width: "100%",
+  lowerControls: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-    paddingHorizontal: 20,
+    width: "85%",
   },
-  leftGroup: { flexDirection: "row" },
-  centerGroup: { alignItems: "center", flex: 1 },
-  sliderLbl: { color: "#fff", fontSize: 13, marginBottom: 4 },
-  slider: { width: "80%", height: 35 },
-  psynkBtn: { alignItems: "center", marginTop: 6 },
-  psynkTxt: {
+  leftControls: {
+    flexDirection: "row",
+    gap: 20,
+  },
+  rateText: {
     color: "#fff",
-    fontSize: 13,
-    fontFamily: "Orbitron-Bold",
-    textTransform: "lowercase",
-  },
-  btn: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 28,
-    padding: 10,
-    marginHorizontal: 4,
+    fontSize: 18,
+    fontWeight: "700",
+    marginLeft: 14,
   },
 });
+
