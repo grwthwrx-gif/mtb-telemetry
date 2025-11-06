@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,14 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import * as FileSystem from "expo-file-system";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -19,7 +27,27 @@ export default function VideoSelectionScreen() {
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [thumbLoading, setThumbLoading] = useState(false);
+  const [videosReady, setVideosReady] = useState(false);
   const navigation = useNavigation();
+
+  // Glow animation for Ready state
+  const glow = useSharedValue(0);
+  useEffect(() => {
+    if (videosReady) {
+      glow.value = withRepeat(
+        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    } else {
+      glow.value = 0;
+    }
+  }, [videosReady]);
+  const glowStyle = useAnimatedStyle(() => ({
+    shadowColor: "#00FFF7",
+    shadowOpacity: glow.value * 0.6,
+    shadowRadius: 12 + glow.value * 4,
+  }));
 
   const handleSelectVideos = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -30,6 +58,7 @@ export default function VideoSelectionScreen() {
 
     try {
       setLoading(true);
+      setVideosReady(false);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsMultipleSelection: true,
@@ -38,13 +67,20 @@ export default function VideoSelectionScreen() {
 
       if (!result.canceled && result.assets.length > 0) {
         const chosen = result.assets.slice(0, 2);
-        const uris = chosen.map((item) => item.uri);
-        setVideos(uris);
+        const copiedUris: string[] = [];
+
+        for (const asset of chosen) {
+          const dest = FileSystem.cacheDirectory + asset.fileName;
+          await FileSystem.copyAsync({ from: asset.uri, to: dest });
+          copiedUris.push(dest);
+        }
+
+        setVideos(copiedUris);
         setThumbnails([]);
         setThumbLoading(true);
 
         Promise.all(
-          uris.map(async (uri) => {
+          copiedUris.map(async (uri) => {
             try {
               const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(
                 uri,
@@ -56,7 +92,10 @@ export default function VideoSelectionScreen() {
             }
           })
         )
-          .then((thumbs) => setThumbnails(thumbs))
+          .then((thumbs) => {
+            setThumbnails(thumbs);
+            setVideosReady(true);
+          })
           .finally(() => setThumbLoading(false));
       }
     } catch (err) {
@@ -68,10 +107,15 @@ export default function VideoSelectionScreen() {
   };
 
   const handleStartComparison = () => {
-    if (videos.length < 2) {
-      Alert.alert("Select 2 Videos", "Please select two runs to compare.");
+    if (thumbLoading) {
+      Alert.alert("Please wait", "Thumbnails are still being generated.");
       return;
     }
+    if (videos.length < 2 || !videos[0] || !videos[1]) {
+      Alert.alert("Select 2 Videos", "Please select two valid runs to compare.");
+      return;
+    }
+    console.log("Navigating with:", videos);
     navigation.navigate(
       "VideoCompare" as never,
       { video1: videos[0], video2: videos[1] } as never
@@ -91,9 +135,12 @@ export default function VideoSelectionScreen() {
       <TouchableOpacity
         style={styles.selectButton}
         onPress={handleSelectVideos}
+        disabled={loading}
       >
         <Ionicons name="videocam" size={22} color="#fff" />
-        <Text style={styles.buttonText}> select videos</Text>
+        <Text style={styles.buttonText}>
+          {loading ? " loading…" : " select videos"}
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.videoContainer}>
@@ -121,17 +168,36 @@ export default function VideoSelectionScreen() {
         )}
       </View>
 
-      <TouchableOpacity
-        style={[
-          styles.startButton,
-          videos.length < 2 && { opacity: 0.5 },
-        ]}
-        onPress={handleStartComparison}
-        disabled={videos.length < 2}
-      >
-        <Ionicons name="play" size={20} color="#fff" />
-        <Text style={styles.buttonText}> start comparison</Text>
-      </TouchableOpacity>
+      <Animated.View style={[styles.startButton, glowStyle]}>
+        <TouchableOpacity
+          onPress={handleStartComparison}
+          disabled={!videosReady || videos.length < 2}
+          style={{ flexDirection: "row", alignItems: "center" }}
+        >
+          {videosReady ? (
+            <>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={24}
+                color="#00FFF7"
+              />
+              <Text style={[styles.buttonText, { color: "#00FFF7" }]}>
+                {"  ready"}
+              </Text>
+            </>
+          ) : thumbLoading ? (
+            <>
+              <ActivityIndicator size="small" color="#FFF" />
+              <Text style={styles.buttonText}> loading…</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="play" size={22} color="#fff" />
+              <Text style={styles.buttonText}> start comparison</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </Animated.View>
     </ScrollView>
   );
 }
@@ -162,16 +228,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     marginBottom: 30,
   },
-  startButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    marginTop: 30,
+  videoContainer: { alignItems: "center", justifyContent: "center" },
+  videoBlock: { alignItems: "center", marginVertical: 10 },
+  thumbnail: { width: 280, height: 160, borderRadius: 12 },
+  thumbnailPlaceholder: {
+    width: 280,
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: "#222",
   },
+  label: { color: "#FFFFFF", fontSize: 14, marginTop: 6 },
   buttonText: {
     color: "#FFFFFF",
     fontSize: 16,
@@ -185,14 +251,14 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     textTransform: "lowercase",
   },
-  videoContainer: { alignItems: "center", justifyContent: "center" },
-  videoBlock: { alignItems: "center", marginVertical: 10 },
-  thumbnail: { width: 280, height: 160, borderRadius: 12 },
-  thumbnailPlaceholder: {
-    width: 280,
-    height: 160,
-    borderRadius: 12,
-    backgroundColor: "#222",
+  startButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    marginTop: 30,
   },
-  label: { color: "#FFFFFF", fontSize: 14, marginTop: 6 },
 });
