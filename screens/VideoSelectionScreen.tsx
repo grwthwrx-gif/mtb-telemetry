@@ -30,7 +30,7 @@ export default function VideoSelectionScreen() {
   const [videosReady, setVideosReady] = useState(false);
   const navigation = useNavigation();
 
-  // Glow animation for Ready state
+  // subtle glow animation for ready state
   const glow = useSharedValue(0);
   useEffect(() => {
     if (videosReady) {
@@ -39,14 +39,12 @@ export default function VideoSelectionScreen() {
         -1,
         true
       );
-    } else {
-      glow.value = 0;
-    }
+    } else glow.value = 0;
   }, [videosReady]);
   const glowStyle = useAnimatedStyle(() => ({
-    shadowColor: "#00FFF7",
-    shadowOpacity: glow.value * 0.6,
-    shadowRadius: 12 + glow.value * 4,
+    shadowColor: "#FFFFFF",
+    shadowOpacity: glow.value * 0.8,
+    shadowRadius: 10 + glow.value * 6,
   }));
 
   const handleSelectVideos = async () => {
@@ -82,10 +80,10 @@ export default function VideoSelectionScreen() {
         Promise.all(
           copiedUris.map(async (uri) => {
             try {
-              const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(
-                uri,
-                { time: 800, quality: 0.5 }
-              );
+              const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(uri, {
+                time: 800,
+                quality: 0.5,
+              });
               return thumb;
             } catch {
               return "";
@@ -115,7 +113,7 @@ export default function VideoSelectionScreen() {
       Alert.alert("Select 2 Videos", "Please select two valid runs to compare.");
       return;
     }
-    console.log("Navigating with:", videos);
+
     navigation.navigate(
       "VideoCompare" as never,
       { video1: videos[0], video2: videos[1] } as never
@@ -124,19 +122,10 @@ export default function VideoSelectionScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Ionicons
-        name="film-outline"
-        size={60}
-        color="#FFFFFF"
-        style={styles.icon}
-      />
+      <Ionicons name="film-outline" size={60} color="#FFFFFF" style={styles.icon} />
       <Text style={styles.title}>select your runs</Text>
 
-      <TouchableOpacity
-        style={styles.selectButton}
-        onPress={handleSelectVideos}
-        disabled={loading}
-      >
+      <TouchableOpacity style={styles.selectButton} onPress={handleSelectVideos} disabled={loading}>
         <Ionicons name="videocam" size={22} color="#fff" />
         <Text style={styles.buttonText}>
           {loading ? " loading…" : " select videos"}
@@ -155,10 +144,7 @@ export default function VideoSelectionScreen() {
           videos.map((uri, idx) => (
             <View key={idx} style={styles.videoBlock}>
               {thumbnails[idx] ? (
-                <Image
-                  source={{ uri: thumbnails[idx] }}
-                  style={styles.thumbnail}
-                />
+                <Image source={{ uri: thumbnails[idx] }} style={styles.thumbnail} />
               ) : (
                 <View style={styles.thumbnailPlaceholder} />
               )}
@@ -176,12 +162,8 @@ export default function VideoSelectionScreen() {
         >
           {videosReady ? (
             <>
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={24}
-                color="#00FFF7"
-              />
-              <Text style={[styles.buttonText, { color: "#00FFF7" }]}>
+              <Ionicons name="checkmark-circle-outline" size={26} color="#FFFFFF" />
+              <Text style={[styles.buttonText, { color: "#FFFFFF" }]}>
                 {"  ready"}
               </Text>
             </>
