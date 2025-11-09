@@ -27,7 +27,7 @@ export default function VideoCompareScreen({ navigation, route }: any) {
   const [elapsed, setElapsed] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  // Update elapsed time while playing
+  // keep elapsed time synced
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (isPlaying && player1.current) {
@@ -46,7 +46,7 @@ export default function VideoCompareScreen({ navigation, route }: any) {
     return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
-  // --- STAGE 1: Anchor video ---
+  // --- Anchor mode controls
   const handleAnchorPlayPause = async () => {
     if (isPlaying) {
       await player1.current?.pauseAsync();
@@ -63,9 +63,10 @@ export default function VideoCompareScreen({ navigation, route }: any) {
     setMode("sync");
   };
 
-  // --- STAGE 2: Sync video 2 ---
+  // --- Sync mode
   const handleOffsetChange = async (val: number) => {
     setOffset(val);
+    // live scrub video2
     await player2.current?.setPositionAsync(Math.abs(val) * 1000);
   };
 
@@ -75,7 +76,7 @@ export default function VideoCompareScreen({ navigation, route }: any) {
     setElapsed(0);
   };
 
-  // --- STAGE 3: Playback both videos ---
+  // --- Playback controls
   const handlePlayPauseBoth = async () => {
     if (isPlaying) {
       await player1.current?.pauseAsync();
@@ -96,34 +97,34 @@ export default function VideoCompareScreen({ navigation, route }: any) {
     setGhostMode(false);
   };
 
-  return (
-    <Pressable style={styles.container}>
-      {/* --- ELAPSED TIME --- */}
-      {mode === "playback" && (
-        <View style={styles.elapsedOverlay}>
-          <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
-        </View>
-      )}
-
-      {/* --- VIDEO DISPLAY --- */}
-      {!ghostMode ? (
-        <>
+  // --- Layout sections
+  const renderVideos = () => {
+    if (mode === "anchor" || mode === "sync") {
+      return (
+        <View style={styles.stackContainer}>
           <Video
             ref={player1}
             source={{ uri: video1 }}
-            style={[styles.videoHalf, styles.topVideo]}
+            style={styles.videoHalf}
             resizeMode="contain"
             useNativeControls={mode === "anchor"}
+            pointerEvents={mode === "sync" ? "none" : "auto"}
           />
           <Video
             ref={player2}
             source={{ uri: video2 }}
-            style={[styles.videoHalf, styles.bottomVideo]}
+            style={styles.videoHalf}
             resizeMode="contain"
             useNativeControls={mode === "sync"}
+            pointerEvents={mode === "sync" ? "auto" : "none"}
           />
-        </>
-      ) : (
+        </View>
+      );
+    }
+
+    // playback
+    if (ghostMode) {
+      return (
         <>
           {swapGhost ? (
             <>
@@ -157,10 +158,31 @@ export default function VideoCompareScreen({ navigation, route }: any) {
             </>
           )}
         </>
-      )}
+      );
+    } else {
+      return (
+        <>
+          <Video
+            ref={player1}
+            source={{ uri: video1 }}
+            style={[styles.videoHalf, styles.topVideoAbs]}
+            resizeMode="contain"
+          />
+          <Video
+            ref={player2}
+            source={{ uri: video2 }}
+            style={[styles.videoHalf, styles.bottomVideoAbs]}
+            resizeMode="contain"
+          />
+        </>
+      );
+    }
+  };
 
-      {/* --- CONTROLS --- */}
-      {mode === "anchor" && (
+  // --- Controls sections
+  const renderControls = () => {
+    if (mode === "anchor") {
+      return (
         <View style={styles.controls}>
           <Text style={styles.header}>Set Anchor Frame</Text>
           <View style={styles.row}>
@@ -176,9 +198,11 @@ export default function VideoCompareScreen({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      );
+    }
 
-      {mode === "sync" && (
+    if (mode === "sync") {
+      return (
         <View style={styles.controls}>
           <Text style={styles.header}>Adjust Sync</Text>
           <Text style={styles.subText}>
@@ -199,9 +223,11 @@ export default function VideoCompareScreen({ navigation, route }: any) {
             <Ionicons name="checkmark-circle" size={56} color="#fff" />
           </TouchableOpacity>
         </View>
-      )}
+      );
+    }
 
-      {mode === "playback" && (
+    if (mode === "playback") {
+      return (
         <View style={styles.controls}>
           <View style={styles.playbackRow}>
             <TouchableOpacity onPress={handlePlayPauseBoth}>
@@ -234,7 +260,19 @@ export default function VideoCompareScreen({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
         </View>
+      );
+    }
+  };
+
+  return (
+    <Pressable style={styles.container}>
+      {mode === "playback" && (
+        <View style={styles.elapsedOverlay}>
+          <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
+        </View>
       )}
+      {renderVideos()}
+      {renderControls()}
     </Pressable>
   );
 }
@@ -246,13 +284,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  stackContainer: {
+    flex: 1,
+    width: "100%",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   videoHalf: {
     width: "100%",
-    height: SCREEN_HEIGHT / 2,
+    height: SCREEN_HEIGHT / 2.2,
     backgroundColor: "#111",
+    marginVertical: 4,
   },
-  topVideo: { top: 0, position: "absolute" },
-  bottomVideo: { bottom: 0, position: "absolute" },
+  topVideoAbs: {
+    position: "absolute",
+    top: 0,
+  },
+  bottomVideoAbs: {
+    position: "absolute",
+    bottom: 0,
+  },
   videoOverlay: {
     position: "absolute",
     width: "100%",
@@ -276,20 +328,6 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: "row", gap: 40 },
   slider: { width: 280, marginVertical: 12 },
-  elapsedOverlay: {
-    position: "absolute",
-    top: 30,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  elapsedText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   playbackRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -303,5 +341,19 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "700",
+  },
+  elapsedOverlay: {
+    position: "absolute",
+    top: 30,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  elapsedText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
