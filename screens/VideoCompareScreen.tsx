@@ -1,18 +1,11 @@
-import React, { useRef, useState, useEffect } from "react";
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Text,
-  Dimensions,
-  Pressable,
-} from "react-native";
-import Slider from "@react-native-community/slider";
+import React, { useRef, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from "react-native";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 export default function VideoCompareScreen() {
   const route = useRoute();
@@ -22,176 +15,111 @@ export default function VideoCompareScreen() {
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
-  const [isSyncMode, setIsSyncMode] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [anchorSet, setAnchorSet] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [elapsed, setElapsed] = useState(0);
-  const [ghostMode, setGhostMode] = useState(false);
-  const [swapGhost, setSwapGhost] = useState(false);
 
-  // Elapsed time tracking
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    if (isPlaying) {
-      timer = setInterval(async () => {
-        const status = await player1.current?.getStatusAsync();
-        if (status?.positionMillis) {
-          setElapsed(status.positionMillis / 1000);
-        }
-      }, 500);
-    } else if (timer) {
-      clearInterval(timer);
-    }
-    return () => timer && clearInterval(timer);
-  }, [isPlaying]);
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
-  };
-
-  // --- SYNC LOGIC ---
-  const handleSetAnchor = async () => {
-    await player1.current?.pauseAsync();
-    await player2.current?.pauseAsync();
-    setIsSyncMode(true);
-    setIsPlaying(false);
-  };
-
-  const handlePlayBoth = async () => {
-    try {
-      await player1.current?.setPositionAsync(0);
-      await player2.current?.setPositionAsync(Math.max(0, offset * 1000));
-      await Promise.all([
-        player1.current?.playAsync(),
-        player2.current?.playAsync(),
-      ]);
-      setIsPlaying(true);
-      setIsSyncMode(false);
-    } catch (e) {
-      console.error(e);
+  const handlePlayPause = async () => {
+    if (!anchorSet) {
+      const status = await player1.current?.getStatusAsync();
+      if (status?.isPlaying) await player1.current?.pauseAsync();
+      else await player1.current?.playAsync();
+    } else {
+      const s1 = await player1.current?.getStatusAsync();
+      const s2 = await player2.current?.getStatusAsync();
+      if (s1?.isPlaying || s2?.isPlaying) {
+        await player1.current?.pauseAsync();
+        await player2.current?.pauseAsync();
+      } else {
+        await player1.current?.playAsync();
+        await player2.current?.playAsync();
+      }
     }
   };
 
-  const handlePause = async () => {
-    await player1.current?.pauseAsync();
-    await player2.current?.pauseAsync();
-    setIsPlaying(false);
+  const handleSetAnchor = () => {
+    setAnchorSet(true);
   };
 
-  const handleToggleGhost = () => setGhostMode((p) => !p);
-  const handleSwapGhost = () => setSwapGhost((p) => !p);
+  const handleConfirmSync = async () => {
+    if (offset > 0) {
+      await player2.current?.setPositionAsync(offset * 1000);
+    } else if (offset < 0) {
+      await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+    }
+  };
+
+  const handleBack = () => {
+    navigation.navigate("VideoSelection" as never);
+  };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>compare runs</Text>
-
-      {/* VIDEOS */}
-      {!ghostMode ? (
-        <View style={styles.videosStack}>
+      {!anchorSet ? (
+        <>
           <Video
             ref={player1}
             source={{ uri: video1 }}
-            style={styles.videoHalf}
+            style={styles.video}
             resizeMode="contain"
-            useNativeControls={false}
+            useNativeControls
           />
           <Video
             ref={player2}
             source={{ uri: video2 }}
-            style={styles.videoHalf}
+            style={styles.video}
             resizeMode="contain"
-            useNativeControls={false}
+            useNativeControls
           />
-        </View>
+          <View style={styles.anchorControls}>
+            <Text style={styles.anchorLabel}>Set Anchor Frame</Text>
+            <View style={styles.anchorButtons}>
+              <TouchableOpacity onPress={handlePlayPause}>
+                <Ionicons name="play-circle-outline" size={60} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSetAnchor}>
+                <Ionicons name="checkmark-circle-outline" size={60} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
       ) : (
-        <View style={styles.videosOverlay}>
-          {swapGhost ? (
-            <>
-              <Video
-                ref={player1}
-                source={{ uri: video1 }}
-                style={[styles.videoOverlay, { opacity: 0.4 }]}
-                resizeMode="contain"
-              />
-              <Video
-                ref={player2}
-                source={{ uri: video2 }}
-                style={styles.videoOverlay}
-                resizeMode="contain"
-              />
-            </>
-          ) : (
-            <>
-              <Video
-                ref={player2}
-                source={{ uri: video2 }}
-                style={[styles.videoOverlay, { opacity: 0.4 }]}
-                resizeMode="contain"
-              />
-              <Video
-                ref={player1}
-                source={{ uri: video1 }}
-                style={styles.videoOverlay}
-                resizeMode="contain"
-              />
-            </>
-          )}
-        </View>
-      )}
-
-      {/* ELAPSED TIME */}
-      {!isSyncMode && (
-        <View style={styles.elapsedOverlay}>
-          <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
-        </View>
-      )}
-
-      {/* CONTROLS */}
-      <View style={styles.controlsPanel}>
-        {isSyncMode ? (
-          <>
-            <Text style={styles.sliderLabel}>
-              Psynk offset: {offset.toFixed(2)} s
-            </Text>
+        <>
+          <Video
+            ref={player1}
+            source={{ uri: video1 }}
+            style={styles.video}
+            resizeMode="contain"
+          />
+          <Video
+            ref={player2}
+            source={{ uri: video2 }}
+            style={styles.video}
+            resizeMode="contain"
+          />
+          <View style={styles.syncControls}>
+            <Text style={styles.label}>Psynk offset: {offset.toFixed(2)} s</Text>
             <Slider
               style={styles.slider}
               minimumValue={-3}
               maximumValue={3}
-              step={0.1}
+              step={0.05}
               value={offset}
               onValueChange={setOffset}
               minimumTrackTintColor="#fff"
-              maximumTrackTintColor="#333"
+              maximumTrackTintColor="#444"
               thumbTintColor="#fff"
             />
-            <TouchableOpacity style={styles.playButton} onPress={handlePlayBoth}>
-              <Ionicons name="checkmark-circle" size={64} color="#fff" />
-            </TouchableOpacity>
-          </>
-        ) : (
-          <View style={styles.playbackControls}>
-            <TouchableOpacity onPress={handlePause}>
-              <Ionicons name="pause-circle" size={52} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSetAnchor}>
-              <Ionicons name="arrow-undo-circle" size={52} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleToggleGhost}>
-              <Ionicons name="layers" size={42} color="#fff" />
-            </TouchableOpacity>
-            {ghostMode && (
-              <TouchableOpacity onPress={handleSwapGhost}>
-                <Ionicons name="swap-vertical" size={42} color="#fff" />
+            <View style={styles.syncButtons}>
+              <TouchableOpacity onPress={handleConfirmSync}>
+                <Ionicons name="checkmark-circle-outline" size={60} color="#fff" />
               </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back-circle" size={52} color="#fff" />
-            </TouchableOpacity>
+              <TouchableOpacity onPress={handleBack}>
+                <Ionicons name="arrow-undo-outline" size={60} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      </View>
+        </>
+      )}
     </View>
   );
 }
@@ -201,71 +129,46 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0B0C10",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 40,
+    justifyContent: "center",
   },
-  title: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 10,
-    textTransform: "lowercase",
-  },
-  videosStack: {
-    alignItems: "center",
-  },
-  videoHalf: {
-    width: "90%",
-    height: SCREEN_HEIGHT * 0.35,
-    borderRadius: 12,
+  video: {
+    width: width * 0.9,
+    height: height * 0.28, // reduced for better spacing
+    borderRadius: 10,
     backgroundColor: "#111",
     marginVertical: 6,
   },
-  videosOverlay: {
-    width: "90%",
-    height: SCREEN_HEIGHT * 0.7,
-    position: "relative",
+  anchorControls: {
+    alignItems: "center",
+    marginTop: 10,
   },
-  videoOverlay: {
-    width: "100%",
-    height: "100%",
-    position: "absolute",
-    borderRadius: 12,
+  anchorLabel: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 8,
   },
-  elapsedOverlay: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  anchorButtons: {
+    flexDirection: "row",
+    gap: 40,
   },
-  elapsedText: {
+  syncControls: {
+    alignItems: "center",
+    marginTop: 15,
+  },
+  label: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  controlsPanel: {
-    width: "100%",
-    alignItems: "center",
-    paddingVertical: 20,
+    marginBottom: 8,
   },
   slider: {
-    width: "85%",
+    width: width * 0.8,
     height: 40,
   },
-  sliderLabel: {
-    color: "#fff",
-    marginBottom: 4,
-  },
-  playButton: {
-    marginTop: 10,
-  },
-  playbackControls: {
+  syncButtons: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    width: "90%",
+    gap: 40,
+    marginTop: 10,
   },
 });
