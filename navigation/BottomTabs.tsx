@@ -1,7 +1,7 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Platform } from "react-native";
 import VideoSelectionScreen from "../screens/VideoSelectionScreen";
 import VideoCompareScreen from "../screens/VideoCompareScreen";
 import CustomParallelTracksIcon from "../components/CustomParallelTracksIcon";
@@ -23,7 +23,7 @@ export default function BottomTabs() {
           position: "absolute",
           left: 20,
           right: 20,
-          bottom: 20,
+          bottom: Platform.OS === "ios" ? 30 : 20, // safe-area gap for iPhone
           borderRadius: 20,
           paddingBottom: 8,
           shadowColor: "#000",
@@ -49,14 +49,26 @@ export default function BottomTabs() {
               />
             );
           }
+
           return (
-            <View style={focused ? styles.activeGlow : null}>{icon}</View>
+            <View style={focused ? styles.activeGlow : null}>
+              {icon}
+            </View>
           );
         },
       })}
     >
       <Tab.Screen name="VideoSelection" component={VideoSelectionScreen} />
-      <Tab.Screen name="VideoCompare" component={VideoCompareScreen} />
+
+      {/* Hide bottom tab bar on VideoCompare for full-screen Psynk mode */}
+      <Tab.Screen
+        name="VideoCompare"
+        component={VideoCompareScreen}
+        options={{
+          tabBarStyle: { display: "none" },
+          headerShown: false,
+        }}
+      />
     </Tab.Navigator>
   );
 }
