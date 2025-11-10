@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -6,46 +6,28 @@ import {
   Image,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
   Alert,
+  Dimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as VideoThumbnails from "expo-video-thumbnails";
-import * as FileSystem from "expo-file-system";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing,
-} from "react-native-reanimated";
-import { useNavigation } from "@react-navigation/native";
+import { Video } from "expo-av";
+import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function VideoSelectionScreen() {
+  const navigation = useNavigation();
   const [videos, setVideos] = useState<string[]>([]);
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [thumbLoading, setThumbLoading] = useState(false);
-  const [videosReady, setVideosReady] = useState(false);
-  const navigation = useNavigation();
+  const [syncMode, setSyncMode] = useState(false);
+  const [offset, setOffset] = useState(0);
 
-  // subtle glow animation for ready state
-  const glow = useSharedValue(0);
-  useEffect(() => {
-    if (videosReady) {
-      glow.value = withRepeat(
-        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-        -1,
-        true
-      );
-    } else glow.value = 0;
-  }, [videosReady]);
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowColor: "#FFFFFF",
-    shadowOpacity: glow.value * 0.8,
-    shadowRadius: 10 + glow.value * 6,
-  }));
+  const player1 = useRef<Video>(null);
+  const player2 = useRef<Video>(null);
 
   const handleSelectVideos = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -56,7 +38,6 @@ export default function VideoSelectionScreen() {
 
     try {
       setLoading(true);
-      setVideosReady(false);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         allowsMultipleSelection: true,
@@ -65,36 +46,21 @@ export default function VideoSelectionScreen() {
 
       if (!result.canceled && result.assets.length > 0) {
         const chosen = result.assets.slice(0, 2);
-        const copiedUris: string[] = [];
+        const uris = chosen.map((item) => item.uri);
+        setVideos(uris);
 
-        for (const asset of chosen) {
-          const dest = FileSystem.cacheDirectory + asset.fileName;
-          await FileSystem.copyAsync({ from: asset.uri, to: dest });
-          copiedUris.push(dest);
+        const thumbs: string[] = [];
+        for (let uri of uris) {
+          try {
+            const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(uri, {
+              time: 800,
+            });
+            thumbs.push(thumb);
+          } catch {
+            thumbs.push("");
+          }
         }
-
-        setVideos(copiedUris);
-        setThumbnails([]);
-        setThumbLoading(true);
-
-        Promise.all(
-          copiedUris.map(async (uri) => {
-            try {
-              const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(uri, {
-                time: 800,
-                quality: 0.5,
-              });
-              return thumb;
-            } catch {
-              return "";
-            }
-          })
-        )
-          .then((thumbs) => {
-            setThumbnails(thumbs);
-            setVideosReady(true);
-          })
-          .finally(() => setThumbLoading(false));
+        setThumbnails(thumbs);
       }
     } catch (err) {
       console.error(err);
@@ -104,95 +70,147 @@ export default function VideoSelectionScreen() {
     }
   };
 
-  const handleStartComparison = () => {
-    if (thumbLoading) {
-      Alert.alert("Please wait", "Thumbnails are still being generated.");
+  const handleSyncNext = () => {
+    if (videos.length < 2) {
+      Alert.alert("Select 2 Videos", "Please select two runs to compare.");
       return;
     }
-    if (videos.length < 2 || !videos[0] || !videos[1]) {
-      Alert.alert("Select 2 Videos", "Please select two valid runs to compare.");
-      return;
-    }
+    setSyncMode(true);
+  };
 
+  const handleConfirmSync = () => {
     navigation.navigate(
       "VideoCompare" as never,
-      { video1: videos[0], video2: videos[1] } as never
+      { video1: videos[0], video2: videos[1], offset } as never
     );
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Ionicons name="film-outline" size={60} color="#FFFFFF" style={styles.icon} />
-      <Text style={styles.title}>select your runs</Text>
-
-      <TouchableOpacity style={styles.selectButton} onPress={handleSelectVideos} disabled={loading}>
-        <Ionicons name="videocam" size={22} color="#fff" />
-        <Text style={styles.buttonText}>
-          {loading ? " loading…" : " select videos"}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.videoContainer}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#FFF" />
-        ) : thumbLoading ? (
-          <View style={{ alignItems: "center", marginTop: 10 }}>
-            <ActivityIndicator size="small" color="#FFF" />
-            <Text style={styles.loadingText}>generating thumbnails…</Text>
-          </View>
-        ) : (
-          videos.map((uri, idx) => (
-            <View key={idx} style={styles.videoBlock}>
-              {thumbnails[idx] ? (
-                <Image source={{ uri: thumbnails[idx] }} style={styles.thumbnail} />
-              ) : (
-                <View style={styles.thumbnailPlaceholder} />
-              )}
-              <Text style={styles.label}>run {idx + 1}</Text>
-            </View>
-          ))
-        )}
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => setSyncMode(false)}>
+          <Ionicons name="arrow-back" size={26} color="#fff" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => {}}>
+          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.startButton, glowStyle]}>
-        <TouchableOpacity
-          onPress={handleStartComparison}
-          disabled={!videosReady || videos.length < 2}
-          style={{ flexDirection: "row", alignItems: "center" }}
-        >
-          {videosReady ? (
-            <>
-              <Ionicons name="checkmark-circle-outline" size={26} color="#FFFFFF" />
-              <Text style={[styles.buttonText, { color: "#FFFFFF" }]}>
-                {"  ready"}
-              </Text>
-            </>
-          ) : thumbLoading ? (
-            <>
-              <ActivityIndicator size="small" color="#FFF" />
-              <Text style={styles.buttonText}> loading…</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="play" size={22} color="#fff" />
-              <Text style={styles.buttonText}> start comparison</Text>
-            </>
+      {!syncMode ? (
+        <>
+          <Ionicons
+            name="film-outline"
+            size={60}
+            color="#FFFFFF"
+            style={styles.icon}
+          />
+          <Text style={styles.title}>select your runs</Text>
+
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={handleSelectVideos}
+          >
+            <Ionicons name="videocam" size={22} color="#fff" />
+            <Text style={styles.buttonText}> select videos</Text>
+          </TouchableOpacity>
+
+          <View style={styles.videoContainer}>
+            {loading ? (
+              <ActivityIndicator size="large" color="#FFF" />
+            ) : (
+              videos.map((uri, idx) => (
+                <View key={idx} style={styles.videoBlock}>
+                  {thumbnails[idx] ? (
+                    <Image
+                      source={{ uri: thumbnails[idx] }}
+                      style={styles.thumbnail}
+                    />
+                  ) : (
+                    <View style={styles.thumbnailPlaceholder} />
+                  )}
+                  <Text style={styles.label}>run {idx + 1}</Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          {videos.length === 2 && (
+            <TouchableOpacity
+              style={styles.startButton}
+              onPress={handleSyncNext}
+            >
+              <Ionicons name="checkmark-circle" size={26} color="#fff" />
+              <Text style={styles.buttonText}> sync runs</Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
-      </Animated.View>
-    </ScrollView>
+        </>
+      ) : (
+        <>
+          <Text style={styles.title}>sync your runs</Text>
+          <View style={styles.videosStack}>
+            <Video
+              ref={player1}
+              source={{ uri: videos[0] }}
+              style={styles.videoHalf}
+              useNativeControls
+              resizeMode="contain"
+            />
+            <Video
+              ref={player2}
+              source={{ uri: videos[1] }}
+              style={styles.videoHalf}
+              useNativeControls
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>
+              Psynk Offset: {offset.toFixed(2)}s
+            </Text>
+            <Slider
+              style={styles.slider}
+              minimumValue={-3}
+              maximumValue={3}
+              step={0.1}
+              value={offset}
+              onValueChange={setOffset}
+              minimumTrackTintColor="#fff"
+              maximumTrackTintColor="#444"
+              thumbTintColor="#fff"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.confirmButton}
+            onPress={handleConfirmSync}
+          >
+            <Ionicons name="checkmark-circle" size={70} color="#fff" />
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: "#0B0C10",
     alignItems: "center",
     justifyContent: "flex-start",
-    backgroundColor: "#0B0C10",
-    paddingTop: "15%",
+    paddingTop: 50,
   },
-  icon: { marginBottom: 10 },
+  header: {
+    width: "90%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    position: "absolute",
+    top: 40,
+    zIndex: 10,
+  },
+  icon: { marginBottom: 10, marginTop: 80 },
   title: {
     fontSize: 22,
     fontWeight: "700",
@@ -210,7 +228,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     marginBottom: 30,
   },
-  videoContainer: { alignItems: "center", justifyContent: "center" },
+  buttonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+    textTransform: "lowercase",
+  },
+  videoContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   videoBlock: { alignItems: "center", marginVertical: 10 },
   thumbnail: { width: 280, height: 160, borderRadius: 12 },
   thumbnailPlaceholder: {
@@ -220,27 +247,43 @@ const styles = StyleSheet.create({
     backgroundColor: "#222",
   },
   label: { color: "#FFFFFF", fontSize: 14, marginTop: 6 },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-    textTransform: "lowercase",
-  },
-  loadingText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    marginTop: 6,
-    opacity: 0.8,
-    textTransform: "lowercase",
-  },
   startButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 25,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 20,
     paddingVertical: 14,
     paddingHorizontal: 40,
     marginTop: 30,
+  },
+  videosStack: {
+    width: "100%",
+    alignItems: "center",
+  },
+  videoHalf: {
+    width: "90%",
+    height: SCREEN_HEIGHT * 0.3,
+    borderRadius: 12,
+    backgroundColor: "#111",
+    marginVertical: 8,
+  },
+  sliderContainer: {
+    width: "85%",
+    marginTop: 10,
+  },
+  sliderLabel: {
+    color: "#fff",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  slider: {
+    width: "100%",
+    height: 40,
+  },
+  confirmButton: {
+    marginTop: 20,
   },
 });
