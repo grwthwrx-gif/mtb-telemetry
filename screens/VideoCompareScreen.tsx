@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Text,
   Dimensions,
+  SafeAreaView,
 } from "react-native";
 import { Video } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,64 +17,115 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 export default function VideoCompareScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { video1, video2, offset } = route.params as {
-    video1: string;
-    video2: string;
-    offset: number;
-  };
+
+  const { video1, video2, offset = 0 } = (route.params ??
+    {}) as { video1?: string; video2?: string; offset?: number };
 
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Elapsed timer sync
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isPlaying) {
-      interval = setInterval(async () => {
-        const status = await player1.current?.getStatusAsync();
-        if (status?.positionMillis && status?.durationMillis) {
-          setElapsed(status.positionMillis / 1000);
-          setPosition(status.positionMillis);
-          setDuration(status.durationMillis);
-        }
-      }, 250);
-    } else {
-      if (interval) clearInterval(interval);
-    }
-    return () => interval && clearInterval(interval);
-  }, [isPlaying]);
+  const [v1Ready, setV1Ready] = useState(false);
+  const [v2Ready, setV2Ready] = useState(false);
 
-  // Format time (mm:ss)
+  // ---- Helpers
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
-  const handlePlayPause = async () => {
+  // Keep elapsed/slider in sync while playing
+  useEffect(() => {
+    let id: NodeJS.Timeout | null = null;
     if (isPlaying) {
-      await player1.current?.pauseAsync();
-      await player2.current?.pauseAsync();
-      setIsPlaying(false);
-    } else {
-      // Sync offset
-      if (offset > 0) await player2.current?.setPositionAsync(offset * 1000);
-      else if (offset < 0) await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+      id = setInterval(async () => {
+        const s1 = await player1.current?.getStatusAsync();
+        if (s1?.positionMillis != null && s1?.durationMillis != null) {
+          setElapsed(s1.positionMillis / 1000);
+          setPosition(s1.positionMillis);
+          setDuration(s1.durationMillis);
+        }
+      }, 250);
+    }
+    return () => {
+      if (id) clearInterval(id);
+    };
+  }, [isPlaying]);
 
-      await player1.current?.playAsync();
-      await player2.current?.playAsync();
-      setIsPlaying(true);
+  // Apply initial seeks when both videos report ready
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // Always show first frames
+        await player1.current?.setPositionAsync(0);
+        await player2.current?.setPositionAsync(0);
+
+        // Apply offset visually before first play
+        if (offset > 0) {
+          // video2 starts later
+          await player2.current?.setPositionAsync(offset * 1000);
+        } else if (offset < 0) {
+          // video1 starts later
+          await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+        }
+
+        // Make sure both are paused initially
+        await player1.current?.pauseAsync();
+        await player2.current?.pauseAsync();
+        setIsPlaying(false);
+      } catch (e) {
+        console.warn("Initial seek error:", e);
+      }
+    };
+
+    if (v1Ready && v2Ready) init();
+  }, [v1Ready, v2Ready, offset]);
+
+  const handlePlayPause = async () => {
+    try {
+      if (isPlaying) {
+        await player1.current?.pauseAsync();
+        await player2.current?.pauseAsync();
+        setIsPlaying(false);
+      } else {
+        // Ensure offset alignment each time play is pressed
+        const s1 = await player1.current?.getStatusAsync();
+        const s2 = await player2.current?.getStatusAsync();
+
+        const base = Math.max(s1?.positionMillis ?? 0, 0);
+        // align player2 relative to player1 by offset
+        const p2 = base + offset * 1000;
+        const p1 = base;
+
+        await player1.current?.setPositionAsync(Math.max(p1, 0));
+        await player2.current?.setPositionAsync(Math.max(p2, 0));
+
+        await player1.current?.playAsync();
+        await player2.current?.playAsync();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.warn("Play/pause error:", e);
     }
   };
 
-  const handleScrub = async (value: number) => {
-    await player1.current?.setPositionAsync(value);
-    await player2.current?.setPositionAsync(value);
+  const handleScrub = async (valueMs: number) => {
+    try {
+      const p1 = Math.max(valueMs, 0);
+      const p2 = Math.max(valueMs + offset * 1000, 0);
+      await player1.current?.setPositionAsync(p1);
+      await player2.current?.setPositionAsync(p2);
+      setPosition(p1);
+      setElapsed(p1 / 1000);
+    } catch (e) {
+      console.warn("Scrub error:", e);
+    }
   };
 
   const handleRateChange = async (rate: number) => {
@@ -83,13 +135,13 @@ export default function VideoCompareScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={26} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => {}}>
+        <TouchableOpacity onPress={() => { /* menu placeholder */ }}>
           <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -98,15 +150,24 @@ export default function VideoCompareScreen() {
       <View style={styles.videoStack}>
         <Video
           ref={player1}
-          source={{ uri: video1 }}
+          source={video1 ? { uri: video1 } : undefined}
           style={styles.videoHalf}
           resizeMode="contain"
+          useNativeControls={false}
+          onLoad={(s) => {
+            setDuration(s?.durationMillis ?? 0);
+            setV1Ready(true);
+          }}
+          onError={(e) => console.warn("Video1 error:", e)}
         />
         <Video
           ref={player2}
-          source={{ uri: video2 }}
+          source={video2 ? { uri: video2 } : undefined}
           style={styles.videoHalf}
           resizeMode="contain"
+          useNativeControls={false}
+          onLoad={() => setV2Ready(true)}
+          onError={(e) => console.warn("Video2 error:", e)}
         />
       </View>
 
@@ -127,13 +188,13 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Scrub Slider */}
+        {/* Scrub Slider (milliseconds) */}
         <Slider
           style={styles.slider}
           minimumValue={0}
-          maximumValue={duration}
+          maximumValue={Math.max(duration, 1)}
           value={position}
-          onValueChange={handleScrub}
+          onSlidingComplete={handleScrub}
           minimumTrackTintColor="#fff"
           maximumTrackTintColor="#555"
           thumbTintColor="#fff"
@@ -154,7 +215,7 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -167,29 +228,31 @@ const styles = StyleSheet.create({
   },
   header: {
     position: "absolute",
-    top: 40,
-    width: "90%",
+    top: 8,
+    width: "92%",
     flexDirection: "row",
     justifyContent: "space-between",
     zIndex: 10,
   },
   videoStack: {
     flex: 1,
+    width: "100%",
     justifyContent: "center",
     alignItems: "center",
+    paddingTop: 40, // leave room for header
   },
   videoHalf: {
-    width: "90%",
-    height: SCREEN_HEIGHT * 0.3,
+    width: "92%",
+    height: SCREEN_HEIGHT * 0.28,
     borderRadius: 10,
     backgroundColor: "#111",
-    marginVertical: 10,
+    marginVertical: 8,
   },
   elapsedOverlay: {
     position: "absolute",
-    top: 100,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    top: 48,
+    right: 16,
+    backgroundColor: "rgba(0,0,0,0.45)",
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -200,15 +263,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   controls: {
-    width: "90%",
+    width: "92%",
     alignItems: "center",
-    marginBottom: 40,
+    marginBottom: 24,
   },
   playbackRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 15,
+    marginBottom: 10,
   },
   slider: {
     width: "100%",
@@ -218,7 +281,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-evenly",
     width: "80%",
-    marginTop: 10,
+    marginTop: 6,
   },
   rateText: {
     color: "#fff",
