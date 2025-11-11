@@ -3,194 +3,215 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   StyleSheet,
-  ActivityIndicator,
-  Alert,
+  SafeAreaView,
   Dimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as VideoThumbnails from "expo-video-thumbnails";
 import { Video } from "expo-av";
-import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
 import { useNavigation } from "@react-navigation/native";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function VideoSelectionScreen() {
   const navigation = useNavigation();
-  const [videos, setVideos] = useState<string[]>([]);
-  const [thumbnails, setThumbnails] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [syncMode, setSyncMode] = useState(false);
-  const [offset, setOffset] = useState(0);
 
-  const player1 = useRef<Video>(null);
-  const player2 = useRef<Video>(null);
+  const [video1, setVideo1] = useState<string | null>(null);
+  const [video2, setVideo2] = useState<string | null>(null);
+  const [anchorTime, setAnchorTime] = useState<number | null>(null);
+  const [alignTime, setAlignTime] = useState<number | null>(null);
+  const [phase, setPhase] = useState<"select" | "anchor" | "align" | "ready">(
+    "select"
+  );
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  const handleSelectVideos = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission required", "Please enable photo library access.");
-      return;
+  const videoRef1 = useRef<Video>(null);
+  const videoRef2 = useRef<Video>(null);
+
+  const pickVideo = async (which: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      const uri = result.assets[0].uri;
+      if (which === 1) setVideo1(uri);
+      else setVideo2(uri);
     }
+  };
 
-    try {
-      setLoading(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsMultipleSelection: true,
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets.length > 0) {
-        const chosen = result.assets.slice(0, 2);
-        const uris = chosen.map((item) => item.uri);
-        setVideos(uris);
-
-        const thumbs: string[] = [];
-        for (let uri of uris) {
-          try {
-            const { uri: thumb } = await VideoThumbnails.getThumbnailAsync(uri, {
-              time: 800,
-            });
-            thumbs.push(thumb);
-          } catch {
-            thumbs.push("");
-          }
-        }
-        setThumbnails(thumbs);
+  const handleAnchorSelect = async () => {
+    if (videoRef1.current) {
+      const status = await videoRef1.current.getStatusAsync();
+      if (status.isLoaded) {
+        setAnchorTime(status.positionMillis / 1000);
+        setPhase("align");
       }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Unable to select videos.");
-    } finally {
-      setLoading(false);
     }
   };
 
-  const handleSyncNext = () => {
-    if (videos.length < 2) {
-      Alert.alert("Select 2 Videos", "Please select two runs to compare.");
-      return;
+  const handleAlignSelect = async () => {
+    if (videoRef2.current && anchorTime !== null) {
+      const status = await videoRef2.current.getStatusAsync();
+      if (status.isLoaded) {
+        const alignAt = status.positionMillis / 1000;
+        setAlignTime(alignAt);
+
+        const offset = alignAt - anchorTime; // positive = video2 starts later
+        setPhase("ready");
+
+        navigation.navigate("VideoCompare", {
+          video1,
+          video2,
+          offset,
+        });
+      }
     }
-    setSyncMode(true);
   };
 
-  const handleConfirmSync = () => {
-    navigation.navigate(
-      "VideoCompare" as never,
-      { video1: videos[0], video2: videos[1], offset } as never
-    );
+  const handlePlayPause = async (which: number) => {
+    const ref = which === 1 ? videoRef1.current : videoRef2.current;
+    if (!ref) return;
+    const status = await ref.getStatusAsync();
+    if (status.isPlaying) {
+      await ref.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      await ref.playAsync();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleScrub = async (which: number, value: number) => {
+    const ref = which === 1 ? videoRef1.current : videoRef2.current;
+    if (ref) await ref.setPositionAsync(value * 1000);
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setSyncMode(false)}>
-          <Ionicons name="arrow-back" size={26} color="#fff" />
+      <View style={styles.headerSafe}>
+        <Text style={styles.headerText}>Sync Runs</Text>
+      </View>
+
+      {/* Video pickers */}
+      <View style={styles.videosContainer}>
+        <TouchableOpacity
+          style={styles.videoBox}
+          onPress={() => pickVideo(1)}
+          activeOpacity={0.8}
+        >
+          {video1 ? (
+            <Video
+              ref={videoRef1}
+              source={{ uri: video1 }}
+              style={styles.video}
+              resizeMode="contain"
+              useNativeControls={false}
+            />
+          ) : (
+            <Ionicons name="film-outline" size={44} color="#888" />
+          )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => {}}>
-          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+
+        <TouchableOpacity
+          style={styles.videoBox}
+          onPress={() => pickVideo(2)}
+          activeOpacity={0.8}
+        >
+          {video2 ? (
+            <Video
+              ref={videoRef2}
+              source={{ uri: video2 }}
+              style={styles.video}
+              resizeMode="contain"
+              useNativeControls={false}
+            />
+          ) : (
+            <Ionicons name="film-outline" size={44} color="#888" />
+          )}
         </TouchableOpacity>
       </View>
 
-      {!syncMode ? (
+      {/* Phase logic */}
+      {video1 && video2 && (
         <>
-          <Ionicons
-            name="film-outline"
-            size={60}
-            color="#FFFFFF"
-            style={styles.icon}
-          />
-          <Text style={styles.title}>select your runs</Text>
+          {phase === "select" && (
+            <View style={styles.instructions}>
+              <Text style={styles.instructionText}>
+                Step 1: Play and pause the top video where your rider starts the
+                run.
+              </Text>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => setPhase("anchor")}
+              >
+                <Text style={styles.buttonText}>Start Sync</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-          <TouchableOpacity
-            style={styles.selectButton}
-            onPress={handleSelectVideos}
-          >
-            <Ionicons name="videocam" size={22} color="#fff" />
-            <Text style={styles.buttonText}> select videos</Text>
-          </TouchableOpacity>
+          {phase === "anchor" && (
+            <View style={styles.syncControls}>
+              <Text style={styles.instructionText}>Set Anchor Frame</Text>
+              <View style={styles.playControls}>
+                <TouchableOpacity onPress={() => handlePlayPause(1)}>
+                  <Ionicons
+                    name={isPlaying ? "pause" : "play"}
+                    size={36}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleAnchorSelect}>
+                  <Ionicons name="checkmark-circle" size={46} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={30}
+                onValueChange={(v) => handleScrub(1, v)}
+                minimumTrackTintColor="#fff"
+                maximumTrackTintColor="#444"
+                thumbTintColor="#fff"
+              />
+            </View>
+          )}
 
-          <View style={styles.videoContainer}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#FFF" />
-            ) : (
-              videos.map((uri, idx) => (
-                <View key={idx} style={styles.videoBlock}>
-                  {thumbnails[idx] ? (
-                    <Image
-                      source={{ uri: thumbnails[idx] }}
-                      style={styles.thumbnail}
-                    />
-                  ) : (
-                    <View style={styles.thumbnailPlaceholder} />
-                  )}
-                  <Text style={styles.label}>run {idx + 1}</Text>
-                </View>
-              ))
-            )}
-          </View>
-
-          {videos.length === 2 && (
-            <TouchableOpacity
-              style={styles.startButton}
-              onPress={handleSyncNext}
-            >
-              <Ionicons name="checkmark-circle" size={26} color="#fff" />
-              <Text style={styles.buttonText}> sync runs</Text>
-            </TouchableOpacity>
+          {phase === "align" && (
+            <View style={styles.syncControls}>
+              <Text style={styles.instructionText}>
+                Step 2: Align the second video to match the same point.
+              </Text>
+              <View style={styles.playControls}>
+                <TouchableOpacity onPress={() => handlePlayPause(2)}>
+                  <Ionicons
+                    name={isPlaying ? "pause" : "play"}
+                    size={36}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleAlignSelect}>
+                  <Ionicons name="checkmark-circle" size={46} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={30}
+                onValueChange={(v) => handleScrub(2, v)}
+                minimumTrackTintColor="#fff"
+                maximumTrackTintColor="#444"
+                thumbTintColor="#fff"
+              />
+            </View>
           )}
         </>
-      ) : (
-        <>
-          <Text style={styles.title}>sync your runs</Text>
-          <View style={styles.videosStack}>
-            <Video
-              ref={player1}
-              source={{ uri: videos[0] }}
-              style={styles.videoHalf}
-              useNativeControls
-              resizeMode="contain"
-            />
-            <Video
-              ref={player2}
-              source={{ uri: videos[1] }}
-              style={styles.videoHalf}
-              useNativeControls
-              resizeMode="contain"
-            />
-          </View>
-
-          <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>
-              Psynk Offset: {offset.toFixed(2)}s
-            </Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={-3}
-              maximumValue={3}
-              step={0.1}
-              value={offset}
-              onValueChange={setOffset}
-              minimumTrackTintColor="#fff"
-              maximumTrackTintColor="#444"
-              thumbTintColor="#fff"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={styles.confirmButton}
-            onPress={handleConfirmSync}
-          >
-            <Ionicons name="checkmark-circle" size={70} color="#fff" />
-          </TouchableOpacity>
-        </>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -199,91 +220,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0B0C10",
     alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: 50,
   },
-  header: {
-    width: "90%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    position: "absolute",
-    top: 40,
-    zIndex: 10,
+  headerSafe: {
+    marginTop: 50,
+    alignItems: "center",
   },
-  icon: { marginBottom: 10, marginTop: 80 },
-  title: {
+  headerText: {
+    color: "#fff",
     fontSize: 22,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 20,
-    textTransform: "lowercase",
   },
-  selectButton: {
-    flexDirection: "row",
+  videosContainer: {
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    marginBottom: 30,
+    marginTop: 20,
   },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-    textTransform: "lowercase",
-  },
-  videoContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  videoBlock: { alignItems: "center", marginVertical: 10 },
-  thumbnail: { width: 280, height: 160, borderRadius: 12 },
-  thumbnailPlaceholder: {
-    width: 280,
-    height: 160,
-    borderRadius: 12,
-    backgroundColor: "#222",
-  },
-  label: { color: "#FFFFFF", fontSize: 14, marginTop: 6 },
-  startButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    marginTop: 30,
-  },
-  videosStack: {
-    width: "100%",
-    alignItems: "center",
-  },
-  videoHalf: {
+  videoBox: {
     width: "90%",
-    height: SCREEN_HEIGHT * 0.3,
-    borderRadius: 12,
+    height: SCREEN_HEIGHT * 0.25,
     backgroundColor: "#111",
-    marginVertical: 8,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 10,
   },
-  sliderContainer: {
-    width: "85%",
-    marginTop: 10,
+  video: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 10,
   },
-  sliderLabel: {
-    color: "#fff",
+  instructions: {
+    alignItems: "center",
+    marginTop: 20,
+  },
+  instructionText: {
+    color: "#ccc",
     textAlign: "center",
     fontSize: 16,
+    marginBottom: 12,
+  },
+  syncControls: {
+    alignItems: "center",
+    marginTop: 20,
+  },
+  playControls: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 40,
+    marginBottom: 10,
+  },
+  actionButton: {
+    backgroundColor: "#1C1F26",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+  },
+  buttonText: {
+    color: "#fff",
     fontWeight: "600",
-    marginBottom: 4,
   },
   slider: {
-    width: "100%",
+    width: "85%",
     height: 40,
-  },
-  confirmButton: {
-    marginTop: 20,
   },
 });
