@@ -29,18 +29,17 @@ export default function VideoCompareScreen() {
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-
   const [v1Ready, setV1Ready] = useState(false);
   const [v2Ready, setV2Ready] = useState(false);
 
-  // ---- Helpers
+  // Format time (mm:ss)
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
-  // Keep elapsed/slider in sync while playing
+  // Keep elapsed/slider synced
   useEffect(() => {
     let id: NodeJS.Timeout | null = null;
     if (isPlaying) {
@@ -58,24 +57,19 @@ export default function VideoCompareScreen() {
     };
   }, [isPlaying]);
 
-  // Apply initial seeks when both videos report ready
+  // Initialize both videos and apply offset visually
   useEffect(() => {
     const init = async () => {
       try {
-        // Always show first frames
         await player1.current?.setPositionAsync(0);
         await player2.current?.setPositionAsync(0);
 
-        // Apply offset visually before first play
         if (offset > 0) {
-          // video2 starts later
           await player2.current?.setPositionAsync(offset * 1000);
         } else if (offset < 0) {
-          // video1 starts later
           await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
         }
 
-        // Make sure both are paused initially
         await player1.current?.pauseAsync();
         await player2.current?.pauseAsync();
         setIsPlaying(false);
@@ -83,7 +77,6 @@ export default function VideoCompareScreen() {
         console.warn("Initial seek error:", e);
       }
     };
-
     if (v1Ready && v2Ready) init();
   }, [v1Ready, v2Ready, offset]);
 
@@ -94,14 +87,11 @@ export default function VideoCompareScreen() {
         await player2.current?.pauseAsync();
         setIsPlaying(false);
       } else {
-        // Ensure offset alignment each time play is pressed
+        // Align before play
         const s1 = await player1.current?.getStatusAsync();
-        const s2 = await player2.current?.getStatusAsync();
-
         const base = Math.max(s1?.positionMillis ?? 0, 0);
-        // align player2 relative to player1 by offset
-        const p2 = base + offset * 1000;
         const p1 = base;
+        const p2 = base + offset * 1000;
 
         await player1.current?.setPositionAsync(Math.max(p1, 0));
         await player2.current?.setPositionAsync(Math.max(p2, 0));
@@ -136,17 +126,19 @@ export default function VideoCompareScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={26} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => { /* menu placeholder */ }}>
-          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
-        </TouchableOpacity>
+      {/* HEADER SAFE AREA */}
+      <View style={styles.headerSafe}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={26} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => {}}>
+            <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* VIDEOS */}
+      {/* VIDEO STACK */}
       <View style={styles.videoStack}>
         <Video
           ref={player1}
@@ -188,7 +180,6 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Scrub Slider (milliseconds) */}
         <Slider
           style={styles.slider}
           minimumValue={0}
@@ -226,20 +217,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  header: {
+  headerSafe: {
     position: "absolute",
-    top: 8,
-    width: "92%",
+    top: 0,
+    width: "100%",
+    paddingTop: 50, // Below dynamic island / status bar
+    alignItems: "center",
+    zIndex: 20,
+  },
+  headerRow: {
+    width: "90%",
     flexDirection: "row",
     justifyContent: "space-between",
-    zIndex: 10,
   },
   videoStack: {
     flex: 1,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 40, // leave room for header
+    paddingTop: 80,
   },
   videoHalf: {
     width: "92%",
@@ -250,7 +246,7 @@ const styles = StyleSheet.create({
   },
   elapsedOverlay: {
     position: "absolute",
-    top: 48,
+    top: 60,
     right: 16,
     backgroundColor: "rgba(0,0,0,0.45)",
     borderRadius: 10,
