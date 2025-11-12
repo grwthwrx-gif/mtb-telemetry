@@ -7,6 +7,7 @@ import {
   Dimensions,
   Pressable,
   SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
 import { Video } from "expo-av";
 import Slider from "@react-native-community/slider";
@@ -41,14 +42,19 @@ export default function VideoCompareScreen() {
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [pos1, setPos1] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fade in/out animation
+  // Fade animations
   const fade = useSharedValue(0);
-  const fadeStyle = useAnimatedStyle(() => ({
-    opacity: fade.value,
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
+
+  // Loading overlay
+  const loadingOpacity = useSharedValue(1);
+  const loadingStyle = useAnimatedStyle(() => ({
+    opacity: loadingOpacity.value,
   }));
 
-  // Control visibility animation
+  // Controls
   const controlsOpacity = useSharedValue(1);
   const [controlsVisible, setControlsVisible] = useState(true);
   const animatedControlsStyle = useAnimatedStyle(() => ({
@@ -75,6 +81,12 @@ export default function VideoCompareScreen() {
   const onLoad = async () => {
     const s1 = await player1.current?.getStatusAsync();
     if (s1?.durationMillis) setDuration(s1.durationMillis / 1000);
+
+    // Hide loading overlay once both videos are ready
+    setTimeout(() => {
+      setIsLoading(false);
+      loadingOpacity.value = withTiming(0, { duration: 500 });
+    }, 600);
   };
 
   const handlePlayPause = async () => {
@@ -171,6 +183,7 @@ export default function VideoCompareScreen() {
                 source={{ uri: video2 }}
                 style={styles.videoBottom}
                 resizeMode="contain"
+                onLoad={onLoad}
               />
             </>
           ) : (
@@ -274,6 +287,14 @@ export default function VideoCompareScreen() {
               </View>
             </Animated.View>
           )}
+
+          {/* Loading overlay */}
+          {isLoading && (
+            <Animated.View style={[styles.loadingOverlay, loadingStyle]}>
+              <ActivityIndicator size="large" color="#fff" />
+              <Text style={styles.loadingText}>Preparing Psynk Playback…</Text>
+            </Animated.View>
+          )}
         </Animated.View>
       </Pressable>
     </SafeAreaView>
@@ -346,5 +367,17 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+  },
+  loadingText: {
+    color: "#fff",
+    fontSize: 16,
+    marginTop: 10,
+    fontWeight: "600",
   },
 });
