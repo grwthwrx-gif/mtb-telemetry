@@ -5,117 +5,99 @@ import {
   TouchableOpacity,
   Text,
   Dimensions,
+  Pressable,
   SafeAreaView,
 } from "react-native";
 import { Video } from "expo-av";
-import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
+import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  runOnJS,
+} from "react-native-reanimated";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function VideoCompareScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-
-  const { video1, video2, offset = 0 } = (route.params ??
-    {}) as { video1?: string; video2?: string; offset?: number };
+  const { video1, video2, offset } = route.params as {
+    video1: string;
+    video2: string;
+    offset: number;
+  };
 
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [ghostMode, setGhostMode] = useState(false);
+  const [swapGhost, setSwapGhost] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [position, setPosition] = useState(0);
+  const [pos1, setPos1] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [v1Ready, setV1Ready] = useState(false);
-  const [v2Ready, setV2Ready] = useState(false);
 
-  // Format time (mm:ss)
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
-  };
+  // Fade in/out animation
+  const fade = useSharedValue(0);
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+  }));
 
-  // Keep elapsed/slider synced
+  // Control visibility animation
+  const controlsOpacity = useSharedValue(1);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const animatedControlsStyle = useAnimatedStyle(() => ({
+    opacity: controlsOpacity.value,
+  }));
+
   useEffect(() => {
-    let id: NodeJS.Timeout | null = null;
+    fade.value = withDelay(100, withTiming(1, { duration: 700 }));
+  }, []);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
     if (isPlaying) {
-      id = setInterval(async () => {
-        const s1 = await player1.current?.getStatusAsync();
-        if (s1?.positionMillis != null && s1?.durationMillis != null) {
-          setElapsed(s1.positionMillis / 1000);
-          setPosition(s1.positionMillis);
-          setDuration(s1.durationMillis);
-        }
-      }, 250);
+      interval = setInterval(async () => {
+        const s = await player1.current?.getStatusAsync();
+        if (s?.positionMillis) setElapsed(s.positionMillis / 1000);
+      }, 300);
+    } else if (interval) {
+      clearInterval(interval);
     }
-    return () => {
-      if (id) clearInterval(id);
-    };
+    return () => interval && clearInterval(interval);
   }, [isPlaying]);
 
-  // Initialize both videos and apply offset visually
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await player1.current?.setPositionAsync(0);
-        await player2.current?.setPositionAsync(0);
-
-        if (offset > 0) {
-          await player2.current?.setPositionAsync(offset * 1000);
-        } else if (offset < 0) {
-          await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
-        }
-
-        await player1.current?.pauseAsync();
-        await player2.current?.pauseAsync();
-        setIsPlaying(false);
-      } catch (e) {
-        console.warn("Initial seek error:", e);
-      }
-    };
-    if (v1Ready && v2Ready) init();
-  }, [v1Ready, v2Ready, offset]);
-
-  const handlePlayPause = async () => {
-    try {
-      if (isPlaying) {
-        await player1.current?.pauseAsync();
-        await player2.current?.pauseAsync();
-        setIsPlaying(false);
-      } else {
-        // Align before play
-        const s1 = await player1.current?.getStatusAsync();
-        const base = Math.max(s1?.positionMillis ?? 0, 0);
-        const p1 = base;
-        const p2 = base + offset * 1000;
-
-        await player1.current?.setPositionAsync(Math.max(p1, 0));
-        await player2.current?.setPositionAsync(Math.max(p2, 0));
-
-        await player1.current?.playAsync();
-        await player2.current?.playAsync();
-        setIsPlaying(true);
-      }
-    } catch (e) {
-      console.warn("Play/pause error:", e);
-    }
+  const onLoad = async () => {
+    const s1 = await player1.current?.getStatusAsync();
+    if (s1?.durationMillis) setDuration(s1.durationMillis / 1000);
   };
 
-  const handleScrub = async (valueMs: number) => {
-    try {
-      const p1 = Math.max(valueMs, 0);
-      const p2 = Math.max(valueMs + offset * 1000, 0);
-      await player1.current?.setPositionAsync(p1);
-      await player2.current?.setPositionAsync(p2);
-      setPosition(p1);
-      setElapsed(p1 / 1000);
-    } catch (e) {
-      console.warn("Scrub error:", e);
+  const handlePlayPause = async () => {
+    if (isPlaying) {
+      await player1.current?.pauseAsync();
+      await player2.current?.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      const s1 = await player1.current?.getStatusAsync();
+      const s2 = await player2.current?.getStatusAsync();
+      if (s1 && s2) {
+        if (offset > 0) await player2.current?.setPositionAsync(offset * 1000);
+        else if (offset < 0)
+          await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+      }
+      await Promise.all([
+        player1.current?.playAsync(),
+        player2.current?.playAsync(),
+      ]);
+      setIsPlaying(true);
     }
+    setControlsVisible(true);
+    controlsOpacity.value = withTiming(1, { duration: 200 });
   };
 
   const handleRateChange = async (rate: number) => {
@@ -124,132 +106,213 @@ export default function VideoCompareScreen() {
     await player2.current?.setRateAsync(rate, true);
   };
 
+  const handleScrub = async (v: number) => {
+    await player1.current?.setPositionAsync(v * 1000);
+    await player2.current?.setPositionAsync(v * 1000 + offset * 1000);
+    setPos1(v);
+  };
+
+  const handleStep = async (delta: number) => {
+    const newPos = Math.max(0, pos1 + delta);
+    await handleScrub(newPos);
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
+  };
+
+  const handleToggleGhost = () => setGhostMode((p) => !p);
+  const handleSwapGhost = () => setSwapGhost((p) => !p);
+
+  const handleBack = async () => {
+    await player1.current?.pauseAsync();
+    await player2.current?.pauseAsync();
+    setIsPlaying(false);
+    fade.value = withTiming(0, { duration: 500 }, () => {
+      runOnJS(navigation.goBack)();
+    });
+  };
+
+  const handleTap = () => {
+    setControlsVisible(true);
+    controlsOpacity.value = withTiming(1, { duration: 200 });
+    setTimeout(() => {
+      controlsOpacity.value = withTiming(0, { duration: 600 });
+      setControlsVisible(false);
+    }, 3500);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER SAFE AREA */}
-      <View style={styles.headerSafe}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={26} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => {}}>
+      <Pressable style={{ flex: 1, width: "100%" }} onPress={handleTap}>
+        <Animated.View style={[{ flex: 1 }, fadeStyle]}>
+          {/* Top bar */}
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={handleBack}>
+              <Ionicons name="chevron-back" size={26} color="#fff" />
+            </TouchableOpacity>
             <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
+          </View>
 
-      {/* VIDEO STACK */}
-      <View style={styles.videoStack}>
-        <Video
-          ref={player1}
-          source={video1 ? { uri: video1 } : undefined}
-          style={styles.videoHalf}
-          resizeMode="contain"
-          useNativeControls={false}
-          onLoad={(s) => {
-            setDuration(s?.durationMillis ?? 0);
-            setV1Ready(true);
-          }}
-          onError={(e) => console.warn("Video1 error:", e)}
-        />
-        <Video
-          ref={player2}
-          source={video2 ? { uri: video2 } : undefined}
-          style={styles.videoHalf}
-          resizeMode="contain"
-          useNativeControls={false}
-          onLoad={() => setV2Ready(true)}
-          onError={(e) => console.warn("Video2 error:", e)}
-        />
-      </View>
+          {/* Videos */}
+          {!ghostMode ? (
+            <>
+              <Video
+                ref={player1}
+                source={{ uri: video1 }}
+                style={styles.videoTop}
+                resizeMode="contain"
+                onLoad={onLoad}
+              />
+              <Video
+                ref={player2}
+                source={{ uri: video2 }}
+                style={styles.videoBottom}
+                resizeMode="contain"
+              />
+            </>
+          ) : (
+            <>
+              {swapGhost ? (
+                <>
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={[styles.videoOverlay, { opacity: 0.4 }]}
+                    resizeMode="contain"
+                  />
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={styles.videoOverlay}
+                    resizeMode="contain"
+                  />
+                </>
+              ) : (
+                <>
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={[styles.videoOverlay, { opacity: 0.4 }]}
+                    resizeMode="contain"
+                  />
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={styles.videoOverlay}
+                    resizeMode="contain"
+                  />
+                </>
+              )}
+            </>
+          )}
 
-      {/* ELAPSED TIME */}
-      <View style={styles.elapsedOverlay}>
-        <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
-      </View>
+          {/* Elapsed Time */}
+          <View style={styles.elapsedOverlay}>
+            <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
+          </View>
 
-      {/* CONTROLS */}
-      <View style={styles.controls}>
-        <View style={styles.playbackRow}>
-          <TouchableOpacity onPress={handlePlayPause}>
-            <Ionicons
-              name={isPlaying ? "pause-circle-outline" : "play-circle-outline"}
-              size={58}
-              color="#fff"
-            />
-          </TouchableOpacity>
-        </View>
+          {/* Controls */}
+          {controlsVisible && (
+            <Animated.View
+              style={[styles.controlsContainer, animatedControlsStyle]}
+            >
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={duration}
+                value={pos1}
+                onValueChange={(v) => handleScrub(v)}
+                minimumTrackTintColor="#fff"
+                maximumTrackTintColor="#333"
+                thumbTintColor="#fff"
+              />
 
-        <Slider
-          style={styles.slider}
-          minimumValue={0}
-          maximumValue={Math.max(duration, 1)}
-          value={position}
-          onSlidingComplete={handleScrub}
-          minimumTrackTintColor="#fff"
-          maximumTrackTintColor="#555"
-          thumbTintColor="#fff"
-        />
+              <View style={styles.controlsRow}>
+                <TouchableOpacity onPress={() => handleStep(-0.5)}>
+                  <Ionicons name="play-back" size={28} color="#fff" />
+                </TouchableOpacity>
 
-        <View style={styles.rateControls}>
-          <TouchableOpacity onPress={() => handleRateChange(0.25)}>
-            <Text style={styles.rateText}>¼×</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleRateChange(0.5)}>
-            <Text style={styles.rateText}>½×</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleRateChange(1)}>
-            <Text style={styles.rateText}>1×</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleRateChange(1.5)}>
-            <Text style={styles.rateText}>1.5×</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+                <TouchableOpacity onPress={handlePlayPause}>
+                  <Ionicons
+                    name={isPlaying ? "pause" : "play"}
+                    size={40}
+                    color="#fff"
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleStep(0.5)}>
+                  <Ionicons name="play-forward" size={28} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleRateChange(1)}>
+                  <Text style={styles.rateText}>1×</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleRateChange(0.5)}>
+                  <Text style={styles.rateText}>½×</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => handleRateChange(0.25)}>
+                  <Text style={styles.rateText}>¼×</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.controlsRow}>
+                <TouchableOpacity onPress={handleToggleGhost}>
+                  <Ionicons
+                    name="layers"
+                    size={26}
+                    color={ghostMode ? "#fff" : "rgba(255,255,255,0.5)"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSwapGhost}>
+                  <Ionicons name="swap-vertical" size={26} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
+        </Animated.View>
+      </Pressable>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0B0C10",
-    alignItems: "center",
-    justifyContent: "center",
+  container: { flex: 1, backgroundColor: "#000" },
+  topBar: {
+    position: "absolute",
+    top: 10,
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    zIndex: 10,
   },
-  headerSafe: {
+  videoTop: {
+    width: "100%",
+    height: SCREEN_HEIGHT * 0.45,
+    backgroundColor: "#111",
+  },
+  videoBottom: {
+    width: "100%",
+    height: SCREEN_HEIGHT * 0.45,
+    backgroundColor: "#111",
+  },
+  videoOverlay: {
     position: "absolute",
     top: 0,
     width: "100%",
-    paddingTop: 50, // Below dynamic island / status bar
-    alignItems: "center",
-    zIndex: 20,
-  },
-  headerRow: {
-    width: "90%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  videoStack: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingTop: 80,
-  },
-  videoHalf: {
-    width: "92%",
-    height: SCREEN_HEIGHT * 0.28,
-    borderRadius: 10,
-    backgroundColor: "#111",
-    marginVertical: 8,
+    height: "100%",
   },
   elapsedOverlay: {
     position: "absolute",
     top: 60,
-    right: 16,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: 10,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
@@ -258,30 +321,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  controls: {
-    width: "92%",
+  controlsContainer: {
+    position: "absolute",
+    bottom: 30,
+    width: "100%",
     alignItems: "center",
-    marginBottom: 24,
   },
-  playbackRow: {
+  slider: {
+    width: "85%",
+    height: 40,
+  },
+  controlsRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  slider: {
-    width: "100%",
-    height: 40,
-  },
-  rateControls: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    width: "80%",
-    marginTop: 6,
+    gap: 24,
+    marginVertical: 10,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 30,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
   },
   rateText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
   },
 });
