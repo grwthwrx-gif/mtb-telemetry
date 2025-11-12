@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   SafeAreaView,
   Dimensions,
+  Alert,
+  Animated,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Video } from "expo-av";
@@ -22,24 +24,58 @@ export default function VideoSelectionScreen() {
   const [video2, setVideo2] = useState<string | null>(null);
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [alignTime, setAlignTime] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"select" | "anchor" | "align" | "ready">(
-    "select"
-  );
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [offset, setOffset] = useState<number>(0);
+  const [phase, setPhase] = useState<
+    "select" | "anchor" | "align" | "preview" | "ready"
+  >("select");
+  const [isPlaying1, setIsPlaying1] = useState(false);
+  const [isPlaying2, setIsPlaying2] = useState(false);
 
   const videoRef1 = useRef<Video>(null);
   const videoRef2 = useRef<Video>(null);
 
+  // Toast animation
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    Animated.sequence([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1500),
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const pickVideo = async (which: number) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: false,
-      quality: 1,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      const uri = result.assets[0].uri;
-      if (which === 1) setVideo1(uri);
-      else setVideo2(uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        if (which === 1) {
+          setVideo1(uri);
+        } else {
+          setVideo2(uri);
+        }
+      } else {
+        console.log("Video selection cancelled");
+      }
+    } catch (error) {
+      console.warn("Video pick error:", error);
+      Alert.alert("Error", "There was a problem selecting the video.");
     }
   };
 
@@ -60,14 +96,10 @@ export default function VideoSelectionScreen() {
         const alignAt = status.positionMillis / 1000;
         setAlignTime(alignAt);
 
-        const offset = alignAt - anchorTime; // positive = video2 starts later
-        setPhase("ready");
-
-        navigation.navigate("VideoCompare", {
-          video1,
-          video2,
-          offset,
-        });
+        const calculatedOffset = alignAt - anchorTime;
+        setOffset(calculatedOffset);
+        showToast(`Psynk offset: ${calculatedOffset.toFixed(2)}s`);
+        setPhase("preview");
       }
     }
   };
@@ -78,10 +110,10 @@ export default function VideoSelectionScreen() {
     const status = await ref.getStatusAsync();
     if (status.isPlaying) {
       await ref.pauseAsync();
-      setIsPlaying(false);
+      which === 1 ? setIsPlaying1(false) : setIsPlaying2(false);
     } else {
       await ref.playAsync();
-      setIsPlaying(true);
+      which === 1 ? setIsPlaying1(true) : setIsPlaying2(true);
     }
   };
 
@@ -90,14 +122,48 @@ export default function VideoSelectionScreen() {
     if (ref) await ref.setPositionAsync(value * 1000);
   };
 
+  const handlePreviewPlay = async () => {
+    if (videoRef1.current && videoRef2.current) {
+      await videoRef1.current.setPositionAsync(0);
+      await videoRef2.current.setPositionAsync(Math.max(0, offset * 1000));
+      await Promise.all([
+        videoRef1.current.playAsync(),
+        videoRef2.current.playAsync(),
+      ]);
+      setPhase("ready");
+    }
+  };
+
+  const handleGoToCompare = () => {
+    navigation.navigate("VideoCompare", { video1, video2, offset });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.headerSafe}>
         <Text style={styles.headerText}>Sync Runs</Text>
       </View>
 
-      {/* Video pickers */}
+      {/* Toast */}
+      <Animated.View
+        style={[
+          styles.toast,
+          {
+            opacity: toastOpacity,
+            transform: [
+              {
+                translateY: toastOpacity.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={styles.toastText}>{toastMessage}</Text>
+      </Animated.View>
+
       <View style={styles.videosContainer}>
         <TouchableOpacity
           style={styles.videoBox}
@@ -113,7 +179,10 @@ export default function VideoSelectionScreen() {
               useNativeControls={false}
             />
           ) : (
-            <Ionicons name="film-outline" size={44} color="#888" />
+            <>
+              <Ionicons name="film-outline" size={44} color="#888" />
+              <Text style={styles.addText}>Select Top Run</Text>
+            </>
           )}
         </TouchableOpacity>
 
@@ -131,25 +200,27 @@ export default function VideoSelectionScreen() {
               useNativeControls={false}
             />
           ) : (
-            <Ionicons name="film-outline" size={44} color="#888" />
+            <>
+              <Ionicons name="film-outline" size={44} color="#888" />
+              <Text style={styles.addText}>Select Bottom Run</Text>
+            </>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Phase logic */}
+      {/* Sync Phases */}
       {video1 && video2 && (
         <>
           {phase === "select" && (
             <View style={styles.instructions}>
               <Text style={styles.instructionText}>
-                Step 1: Play and pause the top video where your rider starts the
-                run.
+                Step 1: Play the top video and pause where the rider starts.
               </Text>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => setPhase("anchor")}
               >
-                <Text style={styles.buttonText}>Start Sync</Text>
+                <Text style={styles.buttonText}>Set Anchor</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -160,7 +231,7 @@ export default function VideoSelectionScreen() {
               <View style={styles.playControls}>
                 <TouchableOpacity onPress={() => handlePlayPause(1)}>
                   <Ionicons
-                    name={isPlaying ? "pause" : "play"}
+                    name={isPlaying1 ? "pause" : "play"}
                     size={36}
                     color="#fff"
                   />
@@ -184,12 +255,12 @@ export default function VideoSelectionScreen() {
           {phase === "align" && (
             <View style={styles.syncControls}>
               <Text style={styles.instructionText}>
-                Step 2: Align the second video to match the same point.
+                Step 2: Align bottom video to the same moment.
               </Text>
               <View style={styles.playControls}>
                 <TouchableOpacity onPress={() => handlePlayPause(2)}>
                   <Ionicons
-                    name={isPlaying ? "pause" : "play"}
+                    name={isPlaying2 ? "pause" : "play"}
                     size={36}
                     color="#fff"
                   />
@@ -207,6 +278,32 @@ export default function VideoSelectionScreen() {
                 maximumTrackTintColor="#444"
                 thumbTintColor="#fff"
               />
+            </View>
+          )}
+
+          {phase === "preview" && (
+            <View style={styles.instructions}>
+              <Text style={styles.instructionText}>
+                Preview synced playback before confirming.
+              </Text>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={handlePreviewPlay}
+              >
+                <Ionicons name="play-circle" size={28} color="#fff" />
+                <Text style={styles.buttonText}> Preview Sync</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {phase === "ready" && (
+            <View style={styles.instructions}>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#2ECC71" }]}
+                onPress={handleGoToCompare}
+              >
+                <Text style={styles.buttonText}>Confirm & Compare</Text>
+              </TouchableOpacity>
             </View>
           )}
         </>
@@ -230,6 +327,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
   },
+  toast: {
+    position: "absolute",
+    top: 90,
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 14,
+  },
   videosContainer: {
     flexDirection: "column",
     alignItems: "center",
@@ -248,6 +358,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 10,
+  },
+  addText: {
+    color: "#666",
+    marginTop: 6,
   },
   instructions: {
     alignItems: "center",
@@ -271,6 +385,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   actionButton: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#1C1F26",
     paddingVertical: 12,
     paddingHorizontal: 24,
