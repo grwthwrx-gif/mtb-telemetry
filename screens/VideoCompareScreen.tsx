@@ -43,10 +43,7 @@ export default function VideoCompareScreen() {
   const [duration, setDuration] = useState(0);
   const [loadingCount, setLoadingCount] = useState(2); // wait until both onLoad fire
 
-  // simple top-right menu
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  // Fade animations
+  // Fade + controls visibility
   const fade = useSharedValue(0);
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const controlsOpacity = useSharedValue(1);
@@ -59,17 +56,18 @@ export default function VideoCompareScreen() {
     fade.value = withDelay(100, withTiming(1, { duration: 700 }));
   }, []);
 
-  // elapsed updater
+  // elapsed updater tied to player1
   useEffect(() => {
     let id: NodeJS.Timeout | null = null;
     if (isPlaying) {
       id = setInterval(async () => {
         const s = await player1.current?.getStatusAsync();
-        if (s?.positionMillis) {
-          setElapsed(s.positionMillis / 1000);
-          setPos1(s.positionMillis / 1000);
+        if (s?.positionMillis != null) {
+          const sec = s.positionMillis / 1000;
+          setElapsed(sec);
+          setPos1(sec);
         }
-      }, 250);
+      }, 120);
     }
     return () => id && clearInterval(id);
   }, [isPlaying]);
@@ -83,7 +81,7 @@ export default function VideoCompareScreen() {
     setLoadingCount((c) => Math.max(0, c - 1));
   };
 
-  // loop-ish: when either finishes, reset both to 0 and pause
+  // When either finishes, reset to start & pause (no auto-replay)
   const onStatusCheckEnd = async (s: any) => {
     if (s?.didJustFinish) {
       await player1.current?.setPositionAsync(0);
@@ -103,6 +101,7 @@ export default function VideoCompareScreen() {
       await player2.current?.pauseAsync();
       setIsPlaying(false);
     } else {
+      // explicit: don't autoplay on load; only on button press
       await applyOffsetForStart();
       await Promise.all([player1.current?.playAsync(), player2.current?.playAsync()]);
       setIsPlaying(true);
@@ -128,10 +127,14 @@ export default function VideoCompareScreen() {
     revealControls();
   };
 
-  const formatTime = (s: number) => {
+  const formatElapsedFancy = (s: number) => {
     const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
+    const whole = Math.floor(s % 60);
+    const frac = s - Math.floor(s);
+    const hundred = Math.floor(frac * 100) % 10; // hundredths digit
+    const tenth = Math.floor((frac * 10) % 10); // tenths digit
+    // Order requested: minutes : seconds : tenths : hundredths
+    return `${m}:${whole < 10 ? "0" : ""}${whole}:${tenth}${hundred}`;
   };
 
   const revealControls = () => {
@@ -140,7 +143,6 @@ export default function VideoCompareScreen() {
     setTimeout(() => {
       controlsOpacity.value = withTiming(0, { duration: 600 });
       setControlsVisible(false);
-      setMenuOpen(false);
     }, 3500);
   };
 
@@ -153,32 +155,21 @@ export default function VideoCompareScreen() {
     fade.value = withTiming(0, { duration: 500 }, () => runOnJS(navigation.goBack)());
   };
 
-  // menu actions
-  const replaySynced = async () => {
-    await player1.current?.setPositionAsync(0);
-    await player2.current?.setPositionAsync(Math.max(0, offset) * 1000);
-    await Promise.all([player1.current?.playAsync(), player2.current?.playAsync()]);
-    setIsPlaying(true);
-    setMenuOpen(false);
+  // ghost controls in bar
+  const toggleGhost = () => {
+    setGhostMode((g) => !g);
     revealControls();
   };
+  const swapGhostLayer = () => {
+    setSwapGhost((s) => !s);
+    revealControls();
+  };
+
   const restart = async () => {
     await player1.current?.pauseAsync();
     await player2.current?.pauseAsync();
     setIsPlaying(false);
     fade.value = withTiming(0, { duration: 400 }, () => runOnJS(navigation.goBack)());
-  };
-
-  // ghost toggles
-  const toggleGhost = () => {
-    setGhostMode((g) => !g);
-    setMenuOpen(false);
-    revealControls();
-  };
-  const swapGhostLayer = () => {
-    setSwapGhost((s) => !s);
-    setMenuOpen(false);
-    revealControls();
   };
 
   const isLoading = loadingCount > 0;
@@ -187,43 +178,17 @@ export default function VideoCompareScreen() {
     <SafeAreaView style={styles.container}>
       <Pressable style={{ flex: 1, width: "100%" }} onPress={handleTap}>
         <Animated.View style={[{ flex: 1 }, fadeStyle]}>
-          {/* Top bar + menu */}
+          {/* Top bar (lowered) */}
           <View style={styles.topBar}>
             <TouchableOpacity onPress={handleBack}>
               <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMenuOpen((b) => !b)}>
-              <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
-            </TouchableOpacity>
+
+            {/* Cast placeholder (disabled for MVP) */}
+            <Ionicons name="radio-outline" size={22} color="rgba(255,255,255,0.35)" />
           </View>
 
-          {/* Simple menu panel */}
-          {menuOpen && (
-            <View style={styles.menuPanel}>
-              <TouchableOpacity style={styles.menuItem} onPress={replaySynced}>
-                <Ionicons name="refresh" size={18} color="#fff" />
-                <Text style={styles.menuText}>Replay synced runs</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={toggleGhost}>
-                <Ionicons name="layers" size={18} color="#fff" />
-                <Text style={styles.menuText}>
-                  {ghostMode ? "Disable ghost overlay" : "Enable ghost overlay"}
-                </Text>
-              </TouchableOpacity>
-              {ghostMode && (
-                <TouchableOpacity style={styles.menuItem} onPress={swapGhostLayer}>
-                  <Ionicons name="swap-vertical" size={18} color="#fff" />
-                  <Text style={styles.menuText}>Swap ghost layer</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.menuItem} onPress={restart}>
-                <Ionicons name="exit-outline" size={18} color="#fff" />
-                <Text style={styles.menuText}>Restart (pick new videos)</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Videos */}
+          {/* Videos: stacked or ghost */}
           {!ghostMode ? (
             <>
               <Video
@@ -234,6 +199,10 @@ export default function VideoCompareScreen() {
                 onLoad={onLoad1}
                 onPlaybackStatusUpdate={onStatusCheckEnd}
               />
+              {/* central elapsed timer between stacked videos */}
+              <View style={styles.elapsedCenter}>
+                <Text style={styles.elapsedText}>{formatElapsedFancy(elapsed)}</Text>
+              </View>
               <Video
                 ref={player2}
                 source={{ uri: video2 }}
@@ -245,7 +214,7 @@ export default function VideoCompareScreen() {
             </>
           ) : (
             <>
-              {/* true overlay: both absolute, one semi-transparent */}
+              {/* Ghost defaults to transparent overlay ON TOP; swap keeps transparency with new top */}
               {swapGhost ? (
                 <>
                   <Video
@@ -285,17 +254,14 @@ export default function VideoCompareScreen() {
                   />
                 </>
               )}
+              {/* elapsed below composite center */}
+              <View style={styles.elapsedBelow}>
+                <Text style={styles.elapsedText}>{formatElapsedFancy(elapsed)}</Text>
+              </View>
             </>
           )}
 
-          {/* Elapsed time lowered a bit */}
-          <View style={styles.elapsedOverlay}>
-            <Text style={styles.elapsedText}>
-              {formatTime(elapsed)}
-            </Text>
-          </View>
-
-          {/* Controls */}
+          {/* Single, non-overlapping controls block at bottom */}
           {controlsVisible && (
             <Animated.View style={[styles.controls, animatedControlsStyle]}>
               <Slider
@@ -308,16 +274,20 @@ export default function VideoCompareScreen() {
                 maximumTrackTintColor="#333"
                 thumbTintColor="#fff"
               />
+
               <View style={styles.row}>
                 <TouchableOpacity onPress={() => handleStep(-0.5)}>
-                  <Ionicons name="play-back" size={28} color="#fff" />
+                  <Ionicons name="play-back" size={26} color="#fff" />
                 </TouchableOpacity>
+
                 <TouchableOpacity onPress={handlePlayPause}>
-                  <Ionicons name={isPlaying ? "pause" : "play"} size={40} color="#fff" />
+                  <Ionicons name={isPlaying ? "pause" : "play"} size={36} color="#fff" />
                 </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => handleStep(0.5)}>
-                  <Ionicons name="play-forward" size={28} color="#fff" />
+                  <Ionicons name="play-forward" size={26} color="#fff" />
                 </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => handleRateChange(1)}>
                   <Text style={styles.rate}>1×</Text>
                 </TouchableOpacity>
@@ -326,6 +296,23 @@ export default function VideoCompareScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleRateChange(0.25)}>
                   <Text style={styles.rate}>¼×</Text>
+                </TouchableOpacity>
+
+                <View style={{ width: 10 }} />
+
+                <TouchableOpacity onPress={toggleGhost}>
+                  <Ionicons
+                    name="layers"
+                    size={24}
+                    color={ghostMode ? "#fff" : "rgba(255,255,255,0.6)"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={swapGhostLayer}>
+                  <Ionicons name="swap-vertical" size={24} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={restart}>
+                  <Ionicons name="exit-outline" size={24} color="#fff" />
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -344,80 +331,81 @@ export default function VideoCompareScreen() {
   );
 }
 
+const SPACER = 10; // vertical gap between stacked videos (more room for elapsed)
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
+
+  // lowered
   topBar: {
-    position: "absolute",
-    top: 10,
-    width: "100%",
+    marginTop: 16,
+    marginHorizontal: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    zIndex: 10,
-  },
-  menuPanel: {
-    position: "absolute",
-    top: 44,
-    right: 14,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    zIndex: 12,
-  },
-  menuItem: {
-    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    gap: 8,
   },
-  menuText: { color: "#fff" },
 
+  // Stacked: move closer to center; leave small space for elapsed
   videoTop: {
     width: "100%",
-    height: SCREEN_HEIGHT * 0.45,
+    height: SCREEN_HEIGHT * 0.42,
     backgroundColor: "#111",
   },
   videoBottom: {
     width: "100%",
-    height: SCREEN_HEIGHT * 0.45,
+    height: SCREEN_HEIGHT * 0.42,
     backgroundColor: "#111",
+    marginTop: SPACER,
   },
+
+  // Ghost composite
   videoOverlay: {
     position: "absolute",
     top: 0,
     width: "100%",
-    height: "100%",
+    height: "84%", // leave space for bottom controls block
     backgroundColor: "#000",
   },
 
-  elapsedOverlay: {
+  // Elapsed: centered between stacked videos
+  elapsedCenter: {
     position: "absolute",
-    top: 68,
-    right: 20,
+    top: SCREEN_HEIGHT * 0.42 + 6,
+    alignSelf: "center",
     backgroundColor: "rgba(0,0,0,0.4)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  elapsedText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  // Elapsed: centered below ghost composite
+  elapsedBelow: {
+    position: "absolute",
+    top: SCREEN_HEIGHT * 0.84 - 26,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  elapsedText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 
+  // Bottom controls block (not overlaying videos)
   controls: {
     position: "absolute",
-    bottom: 30,
+    bottom: 22,
     width: "100%",
     alignItems: "center",
   },
-  slider: { width: "85%", height: 40 },
+  slider: { width: "88%", height: 40 },
   row: {
     flexDirection: "row",
-    gap: 22,
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
+    gap: 18,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 28,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    marginTop: 10,
+    marginTop: 8,
   },
   rate: { color: "#fff", fontWeight: "700" },
 

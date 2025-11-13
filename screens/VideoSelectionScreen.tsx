@@ -17,6 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 const { width, height } = Dimensions.get("window");
+const FRAME_H = Math.min(height * 0.30, 300);
+const FRAME = 1 / 30; // ~1 frame at 30fps
 
 type Phase = "select1" | "anchor" | "select2" | "align" | "ready";
 
@@ -34,9 +36,6 @@ export default function VideoSelectionScreen() {
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
 
-  const [ready1, setReady1] = useState(false);
-  const [ready2, setReady2] = useState(false);
-
   const [duration1, setDuration1] = useState(0);
   const [duration2, setDuration2] = useState(0);
   const [pos1, setPos1] = useState(0);
@@ -46,6 +45,8 @@ export default function VideoSelectionScreen() {
 
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [offset, setOffset] = useState<number>(0);
+
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // tiny toast
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -57,6 +58,23 @@ export default function VideoSelectionScreen() {
       Animated.delay(1200),
       Animated.timing(toastOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start();
+  };
+
+  const resetAll = () => {
+    setPhase("select1");
+    setVideo1(null);
+    setVideo2(null);
+    setLoading1(false);
+    setLoading2(false);
+    setDuration1(0);
+    setDuration2(0);
+    setPos1(0);
+    setPos2(0);
+    setIsPlaying1(false);
+    setIsPlaying2(false);
+    setAnchorTime(null);
+    setOffset(0);
+    setMenuOpen(false);
   };
 
   const ensurePerms = async () => {
@@ -81,12 +99,10 @@ export default function VideoSelectionScreen() {
     if (which === 1) {
       setVideo1(uri);
       setLoading1(true);
-      setReady1(false);
       setPhase("anchor");
     } else {
       setVideo2(uri);
       setLoading2(true);
-      setReady2(false);
       setPhase("align");
     }
   };
@@ -95,7 +111,6 @@ export default function VideoSelectionScreen() {
   const onLoad1 = (s: AVPlaybackStatusSuccess) => {
     setDuration1((s.durationMillis ?? 0) / 1000);
     setLoading1(false);
-    setReady1(true);
   };
   const onStatus1 = (s: AVPlaybackStatusSuccess) => {
     if (!s.isLoaded) return;
@@ -107,7 +122,6 @@ export default function VideoSelectionScreen() {
   const onLoad2 = (s: AVPlaybackStatusSuccess) => {
     setDuration2((s.durationMillis ?? 0) / 1000);
     setLoading2(false);
-    setReady2(true);
   };
   const onStatus2 = (s: AVPlaybackStatusSuccess) => {
     if (!s.isLoaded) return;
@@ -126,6 +140,14 @@ export default function VideoSelectionScreen() {
   const scrub = async (which: 1 | 2, valueSec: number) => {
     const ref = which === 1 ? v1.current : v2.current;
     if (ref) await ref.setPositionAsync(Math.max(0, valueSec) * 1000);
+  };
+
+  const nudge = async (which: 1 | 2, delta: number) => {
+    const ref = which === 1 ? v1.current : v2.current;
+    if (!ref) return;
+    const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
+    const cur = (s.positionMillis ?? 0) / 1000;
+    await ref.setPositionAsync(Math.max(0, cur + delta) * 1000);
   };
 
   const confirmAnchor = async () => {
@@ -156,22 +178,63 @@ export default function VideoSelectionScreen() {
     nav.navigate("VideoCompare" as never, { video1, video2, offset } as never);
   };
 
+  // UI helpers
+  const InsideHint = ({ text }: { text: string }) => (
+    <View style={styles.overlayHint}>
+      <Text style={styles.overlayHintText}>{text}</Text>
+    </View>
+  );
+
+  const FineControls = ({ which }: { which: 1 | 2 }) => (
+    <View style={styles.fineRow}>
+      <TouchableOpacity onPress={() => nudge(which, -1)}>
+        <Text style={styles.fineBtn}>-1s</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudge(which, -0.1)}>
+        <Text style={styles.fineBtn}>-0.1s</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudge(which, -FRAME)}>
+        <Text style={styles.fineBtn}>-1f</Text>
+      </TouchableOpacity>
+      <View style={{ width: 10 }} />
+      <TouchableOpacity onPress={() => nudge(which, FRAME)}>
+        <Text style={styles.fineBtn}>+1f</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudge(which, 0.1)}>
+        <Text style={styles.fineBtn}>+0.1s</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudge(which, 1)}>
+        <Text style={styles.fineBtn}>+1s</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar placeholders to match compare screen */}
+      {/* Top bar (lowered so it won't clash with iOS status area) */}
       <View style={styles.topBar}>
         <Ionicons name="chevron-back" size={26} color="#fff" />
-        <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+        <TouchableOpacity onPress={() => setMenuOpen((m) => !m)}>
+          <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
+        </TouchableOpacity>
       </View>
+
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <TouchableOpacity style={styles.menuItem} onPress={resetAll}>
+            <Ionicons name="exit-outline" size={18} color="#fff" />
+            <Text style={styles.menuText}>Restart (pick new videos)</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Toast */}
       <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
         <Text style={styles.toastText}>{toastText}</Text>
       </Animated.View>
 
-      {/* BIG centered frames */}
+      {/* --- Video 1 block --- */}
       <View style={styles.frameBlock}>
-        {/* Video 1 */}
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.frame}
@@ -195,11 +258,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {!loading1 && phase === "anchor" && (
-                <View style={styles.overlayHint}>
-                  <Text style={styles.overlayHintText}>
-                    Scrub to desired anchor frame, then ✓
-                  </Text>
-                </View>
+                <InsideHint text="Scrub to desired anchor frame, then ✓" />
               )}
             </>
           ) : (
@@ -222,6 +281,7 @@ export default function VideoSelectionScreen() {
               maximumTrackTintColor="#333"
               thumbTintColor="#fff"
             />
+            <FineControls which={1} />
             <View style={styles.controlsRow}>
               <TouchableOpacity onPress={() => togglePlay(1)}>
                 <Ionicons name={isPlaying1 ? "pause" : "play"} size={34} color="#fff" />
@@ -230,13 +290,13 @@ export default function VideoSelectionScreen() {
                 <Ionicons name="checkmark-circle" size={40} color="#fff" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.stepHint}>Tip: use the slider to find your anchor frame.</Text>
+            <Text style={styles.stepHint}>Tip: use the fine controls for precise frame matching.</Text>
           </>
         )}
       </View>
 
-      <View style={styles.frameBlock}>
-        {/* Video 2 */}
+      {/* --- Video 2 block --- */}
+      <View style={[styles.frameBlock, { marginTop: 28 }]}>
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.frame}
@@ -262,11 +322,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {!loading2 && phase === "align" && (
-                <View style={styles.overlayHint}>
-                  <Text style={styles.overlayHintText}>
-                    Scrub to match top frame, then ✓
-                  </Text>
-                </View>
+                <InsideHint text="Scrub to match top frame, then ✓" />
               )}
             </>
           ) : (
@@ -291,6 +347,7 @@ export default function VideoSelectionScreen() {
               maximumTrackTintColor="#333"
               thumbTintColor="#fff"
             />
+            <FineControls which={2} />
             <View style={styles.controlsRow}>
               <TouchableOpacity onPress={() => togglePlay(2)}>
                 <Ionicons name={isPlaying2 ? "pause" : "play"} size={34} color="#fff" />
@@ -314,34 +371,46 @@ export default function VideoSelectionScreen() {
   );
 }
 
-const FRAME_H = Math.min(height * 0.28, 280);
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
+
+  // Lowered top bar
   topBar: {
-    position: "absolute",
-    top: 8,
-    left: 16,
-    right: 16,
-    zIndex: 5,
+    marginTop: 16,
+    marginHorizontal: 16,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
+
+  menuPanel: {
+    position: "absolute",
+    top: 56,
+    right: 14,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    zIndex: 9,
+  },
+  menuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 8 },
+  menuText: { color: "#fff" },
+
   toast: {
     position: "absolute",
-    top: 70,
+    top: 86,
     alignSelf: "center",
     backgroundColor: "rgba(255,255,255,0.1)",
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 16,
-    zIndex: 6,
+    zIndex: 8,
   },
   toastText: { color: "#fff" },
 
-  frameBlock: { alignItems: "center", marginTop: 48 },
+  frameBlock: { alignItems: "center", marginTop: 32 },
   frame: {
-    width: Math.min(width * 0.92, 700),
+    width: Math.min(width * 0.94, 720),
     height: FRAME_H,
     borderRadius: 12,
     backgroundColor: "#1A1A1A",
@@ -364,13 +433,28 @@ const styles = StyleSheet.create({
   },
   overlayHintText: { color: "#fff" },
 
-  slider: { width: "88%", marginTop: 12 },
+  slider: { width: "90%", marginTop: 12 },
   controlsRow: {
     flexDirection: "row",
     gap: 28,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 10,
+  },
+  fineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
     marginTop: 8,
+  },
+  fineBtn: {
+    color: "#fff",
+    fontWeight: "700",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   stepHint: { color: "#ddd", fontSize: 12, marginTop: 6 },
 
@@ -384,7 +468,7 @@ const styles = StyleSheet.create({
 
   confirm: {
     alignSelf: "center",
-    marginTop: 18,
+    marginTop: 22,
     backgroundColor: "#1C1F26",
     borderRadius: 14,
     paddingHorizontal: 20,
