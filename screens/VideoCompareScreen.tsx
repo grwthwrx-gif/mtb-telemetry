@@ -34,9 +34,7 @@ export default function VideoCompareScreen() {
   const [swapGhost, setSwapGhost] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
-  // ---------------------------
-  // Apply sync on mount
-  // ---------------------------
+  // Apply sync offset once on mount
   useEffect(() => {
     async function applyOffset() {
       await player1.current?.setPositionAsync(0);
@@ -48,31 +46,41 @@ export default function VideoCompareScreen() {
         await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
       }
     }
-
     applyOffset();
-  }, []);
+  }, [offset]);
 
-  // ---------------------------
-  // Playback + scrub sync
-  // ---------------------------
+  // Play / pause both videos in sync
   const handlePlayPause = async () => {
+    // If at end, rewind to 0 before replaying
+    if (!isPlaying && position >= duration) {
+      await player1.current?.setPositionAsync(0);
+      await player2.current?.setPositionAsync(offset > 0 ? offset * 1000 : 0);
+      if (offset < 0) {
+        await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+      }
+      setElapsed(0);
+    }
+
     if (isPlaying) {
       await player1.current?.pauseAsync();
       await player2.current?.pauseAsync();
       setIsPlaying(false);
       return;
     }
+
     await player1.current?.playAsync();
     await player2.current?.playAsync();
     setIsPlaying(true);
   };
 
+  // Scrub both videos together
   const handleScrub = async (v: number) => {
     setPosition(v);
     await player1.current?.setPositionAsync(v);
     await player2.current?.setPositionAsync(v);
   };
 
+  // Step forward/backward in seconds
   const handleStep = async (delta: number) => {
     const newPos = Math.max(0, position + delta * 1000);
     setPosition(newPos);
@@ -86,25 +94,24 @@ export default function VideoCompareScreen() {
     await player2.current?.setRateAsync(r, true);
   };
 
-  // ---------------------------
-  // Track elapsed time
-  ---------------------------
+  // Track elapsed time based on player1
   useEffect(() => {
     let interval: NodeJS.Timer | null = null;
 
     if (isPlaying) {
       interval = setInterval(async () => {
-        const st = await player1.current?.getStatusAsync();
-        if (st?.positionMillis) {
-          setElapsed(st.positionMillis);
-          setPosition(st.positionMillis);
+        const s = await player1.current?.getStatusAsync();
+        if (s?.positionMillis != null) {
+          setElapsed(s.positionMillis);
+          setPosition(s.positionMillis);
 
-          if (st.positionMillis >= st.durationMillis) {
+          if (s.positionMillis >= s.durationMillis) {
             setIsPlaying(false);
           }
         }
       }, 120);
     }
+
     return () => interval && clearInterval(interval);
   }, [isPlaying]);
 
@@ -112,18 +119,14 @@ export default function VideoCompareScreen() {
     const s = ms / 1000;
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
-    const hundredths = Math.floor((s * 100) % 100).toString().padStart(2, "0");
+    const hundredths = Math.floor((s * 100) % 100)
+      .toString()
+      .padStart(2, "0");
     return `${m}:${sec.toString().padStart(2, "0")}:${hundredths}`;
   };
 
-  // ---------------------------
-  // Ghost transparency logic
-  // ---------------------------
-  const ghostOpacity = 0.45; // transparent overlay
+  const ghostOpacity = 0.45;
 
-  // ---------------------------
-  // Restart
-  // ---------------------------
   const handleRestart = () => navigation.navigate("VideoSelection" as never);
 
   return (
@@ -144,8 +147,7 @@ export default function VideoCompareScreen() {
 
       {/* VIDEO AREA */}
       <View style={styles.videoArea}>
-
-        {/* ===== Stacked Mode ===== */}
+        {/* Stacked Mode */}
         {!ghost && (
           <>
             <Video
@@ -164,7 +166,7 @@ export default function VideoCompareScreen() {
           </>
         )}
 
-        {/* ===== Ghost Overlay Mode ===== */}
+        {/* Ghost Mode */}
         {ghost && (
           <>
             {!swapGhost ? (
@@ -175,12 +177,15 @@ export default function VideoCompareScreen() {
                   style={styles.fullVideo}
                   resizeMode="contain"
                 />
-                <Video
-                  ref={player2}
-                  source={{ uri: video2 }}
-                  style={[styles.fullVideo, { opacity: ghostOpacity }]}
-                  resizeMode="contain"
-                />
+                <View style={styles.ghostOverlayContainer}>
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={[styles.fullVideo, { opacity: ghostOpacity }]}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.ghostGlow} pointerEvents="none" />
+                </View>
               </>
             ) : (
               <>
@@ -190,12 +195,15 @@ export default function VideoCompareScreen() {
                   style={styles.fullVideo}
                   resizeMode="contain"
                 />
-                <Video
-                  ref={player1}
-                  source={{ uri: video1 }}
-                  style={[styles.fullVideo, { opacity: ghostOpacity }]}
-                  resizeMode="contain"
-                />
+                <View style={styles.ghostOverlayContainer}>
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={[styles.fullVideo, { opacity: ghostOpacity }]}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.ghostGlow} pointerEvents="none" />
+                </View>
               </>
             )}
           </>
@@ -204,8 +212,6 @@ export default function VideoCompareScreen() {
 
       {/* CONTROL BLOCK */}
       <View style={styles.controlsBlock}>
-
-        {/* Main control row */}
         <View style={styles.mainRow}>
           <TouchableOpacity onPress={() => handleStep(-0.5)}>
             <Ionicons name="play-back" size={32} color="#fff" />
@@ -236,7 +242,6 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SCRUB SLIDER */}
         <Slider
           style={styles.scrubSlider}
           minimumValue={0}
@@ -248,7 +253,6 @@ export default function VideoCompareScreen() {
           thumbTintColor="#fff"
         />
 
-        {/* Lower row: ghost + swap + restart */}
         <View style={styles.bottomRow}>
           <TouchableOpacity onPress={() => setGhost(!ghost)}>
             <Ionicons name="layers" size={30} color={ghost ? "#fff" : "#aaa"} />
@@ -262,22 +266,18 @@ export default function VideoCompareScreen() {
             <Ionicons name="refresh" size={30} color="#fff" />
           </TouchableOpacity>
         </View>
-
       </View>
     </View>
   );
 }
 
-// =============================
-//   STYLES
-// =============================
+/* STYLES */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0B0C10",
   },
-
   topBar: {
     marginTop: 55,
     paddingHorizontal: 22,
@@ -285,7 +285,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-
   elapsedText: {
     color: "#fff",
     fontSize: 22,
@@ -294,53 +293,62 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 5,
   },
-
   videoArea: {
     flex: 1,
     width: "100%",
     justifyContent: "space-evenly",
     alignItems: "center",
   },
-
   videoHalf: {
     width: SCREEN_WIDTH * 0.95,
     height: SCREEN_HEIGHT * 0.28,
     backgroundColor: "#111",
     borderRadius: 10,
   },
-
   fullVideo: {
     position: "absolute",
     width: "100%",
     height: SCREEN_HEIGHT * 0.68,
   },
-
+  ghostOverlayContainer: {
+    position: "absolute",
+    width: "100%",
+    height: SCREEN_HEIGHT * 0.68,
+  },
+  ghostGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderColor: "rgba(255,255,255,0.6)",
+    borderWidth: 1,
+    shadowColor: "#fff",
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+  },
   controlsBlock: {
     width: "100%",
     paddingVertical: 12,
     backgroundColor: "rgba(255,255,255,0.06)",
   },
-
   mainRow: {
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
     marginBottom: 8,
   },
-
   rate: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "700",
   },
-
   scrubSlider: {
     width: "92%",
     alignSelf: "center",
     height: 36,
     marginBottom: 10,
   },
-
   bottomRow: {
     flexDirection: "row",
     justifyContent: "space-around",
