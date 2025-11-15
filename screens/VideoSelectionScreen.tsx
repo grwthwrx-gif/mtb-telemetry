@@ -17,36 +17,46 @@ import { useNavigation } from "@react-navigation/native";
 
 const { width, height } = Dimensions.get("window");
 const FRAME_HEIGHT = Math.min(height * 0.30, 280);
-const FRAME = 1 / 30; // ~1 frame at 30fps
+const FRAME_STEP_SEC = 1 / 30; // ~1 frame at 30fps
 
 type Phase = "select1" | "anchor" | "select2" | "align" | "ready";
 
 export default function VideoSelectionScreen() {
   const navigation = useNavigation();
 
+  // Flow state
   const [phase, setPhase] = useState<Phase>("select1");
 
+  // URIs
   const [video1, setVideo1] = useState<string | null>(null);
   const [video2, setVideo2] = useState<string | null>(null);
 
+  // Player refs
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
+  // Loading flags (for spinner)
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
 
+  // Durations & positions (seconds)
   const [duration1, setDuration1] = useState(0);
   const [duration2, setDuration2] = useState(0);
   const [pos1, setPos1] = useState(0);
   const [pos2, setPos2] = useState(0);
+
+  // Simple playing flags
   const [playing1, setPlaying1] = useState(false);
   const [playing2, setPlaying2] = useState(false);
 
+  // Sync data
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [offset, setOffset] = useState<number>(0);
 
+  // Menu
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Permissions
   const ensurePermissions = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -64,34 +74,39 @@ export default function VideoSelectionScreen() {
     if (!ok) return;
 
     try {
+      if (which === 1) setLoading1(true);
+      if (which === 2) setLoading2(true);
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsMultipleSelection: false,
+        allowsMultipleSelection: true,
         quality: 1,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
+        if (which === 1) setLoading1(false);
+        if (which === 2) setLoading2(false);
         return;
       }
 
       const uri = result.assets[0].uri;
 
       if (which === 1) {
-        setLoading1(true);
         setVideo1(uri);
         setPhase("anchor");
       } else {
-        setLoading2(true);
         setVideo2(uri);
         setPhase("align");
       }
     } catch (e) {
       console.error(e);
       Alert.alert("Error", "Unable to select video.");
+      if (which === 1) setLoading1(false);
+      if (which === 2) setLoading2(false);
     }
   };
 
-  // Video 1 events
+  // Load + status handlers
   const onLoad1 = (status: AVPlaybackStatusSuccess) => {
     setDuration1((status.durationMillis ?? 0) / 1000);
     setLoading1(false);
@@ -99,11 +114,11 @@ export default function VideoSelectionScreen() {
 
   const onStatus1 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
-    setPos1((status.positionMillis ?? 0) / 1000);
+    const newPos = (status.positionMillis ?? 0) / 1000;
+    setPos1(newPos);
     setPlaying1(!!status.isPlaying);
   };
 
-  // Video 2 events
   const onLoad2 = (status: AVPlaybackStatusSuccess) => {
     setDuration2((status.durationMillis ?? 0) / 1000);
     setLoading2(false);
@@ -111,52 +126,58 @@ export default function VideoSelectionScreen() {
 
   const onStatus2 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
-    setPos2((status.positionMillis ?? 0) / 1000);
+    const newPos = (status.positionMillis ?? 0) / 1000;
+    setPos2(newPos);
     setPlaying2(!!status.isPlaying);
   };
 
+  // Play / pause individual
   const togglePlay = async (which: 1 | 2) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
-    const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (s.isLoaded && s.isPlaying) {
+
+    const status = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
+    if (!status.isLoaded) return;
+
+    if (status.isPlaying) {
       await ref.pauseAsync();
     } else {
       await ref.playAsync();
     }
   };
 
+  // Scrub to position (seconds) using local state
   const scrubTo = async (which: 1 | 2, valueSec: number) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
-    await ref.setPositionAsync(Math.max(0, valueSec) * 1000);
+
+    const clamped = Math.max(0, valueSec);
+    await ref.setPositionAsync(clamped * 1000);
+
+    if (which === 1) setPos1(clamped);
+    else setPos2(clamped);
   };
 
-  const nudge = async (which: 1 | 2, delta: number) => {
-    const ref = which === 1 ? player1.current : player2.current;
-    if (!ref) return;
-    const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (!s.isLoaded) return;
-    const current = (s.positionMillis ?? 0) / 1000;
-    const next = Math.max(0, current + delta);
-    await ref.setPositionAsync(next * 1000);
+  // Fine nudge using current state only (no status async)
+  const nudge = async (which: 1 | 2, deltaSec: number) => {
+    if (which === 1) {
+      const next = Math.max(0, pos1 + deltaSec);
+      await scrubTo(1, next);
+    } else {
+      const next = Math.max(0, pos2 + deltaSec);
+      await scrubTo(2, next);
+    }
   };
 
   const confirmAnchor = async () => {
-    if (!player1.current) return;
-    const s = (await player1.current.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (!s.isLoaded) return;
-    const t = (s.positionMillis ?? 0) / 1000;
-    setAnchorTime(t);
+    // Lock in current position of video1 as anchor
+    setAnchorTime(pos1);
     setPhase("select2");
   };
 
-  const confirmAlign = async () => {
-    if (!player2.current || anchorTime == null) return;
-    const s = (await player2.current.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (!s.isLoaded) return;
-    const t = (s.positionMillis ?? 0) / 1000;
-    const off = t - anchorTime;
+  const confirmAlign = () => {
+    if (anchorTime == null) return;
+    const off = pos2 - anchorTime;
     setOffset(off);
     setPhase("ready");
   };
@@ -195,31 +216,31 @@ export default function VideoSelectionScreen() {
 
   const FineControls = ({ which }: { which: 1 | 2 }) => (
     <View style={styles.fineRow}>
-      <TouchableOpacity onPress={() => nudge(which, -1)}>
-        <Text style={styles.fineBtn}>-1s</Text>
+      <TouchableOpacity onPress={() => nudge(which, -0.5)}>
+        <Text style={styles.fineBtn}>-0.5s</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => nudge(which, -0.1)}>
         <Text style={styles.fineBtn}>-0.1s</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, -FRAME)}>
+      <TouchableOpacity onPress={() => nudge(which, -FRAME_STEP_SEC)}>
         <Text style={styles.fineBtn}>-1f</Text>
       </TouchableOpacity>
 
       <View style={{ width: 8 }} />
 
-      <TouchableOpacity onPress={() => nudge(which, FRAME)}>
+      <TouchableOpacity onPress={() => nudge(which, FRAME_STEP_SEC)}>
         <Text style={styles.fineBtn}>+1f</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={() => nudge(which, 0.1)}>
         <Text style={styles.fineBtn}>+0.1s</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, 1)}>
-        <Text style={styles.fineBtn}>+1s</Text>
+      <TouchableOpacity onPress={() => nudge(which, 0.5)}>
+        <Text style={styles.fineBtn}>+0.5s</Text>
       </TouchableOpacity>
     </View>
   );
 
-  const insideText = (text: string) => (
+  const overlayHint = (text: string) => (
     <View style={styles.overlayHint}>
       <Text style={styles.overlayHintText}>{text}</Text>
     </View>
@@ -227,9 +248,11 @@ export default function VideoSelectionScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar (lowered to avoid status bar clash) */}
+      {/* Top bar */}
       <View style={styles.topBar}>
-        <Ionicons name="chevron-back" size={24} color="#fff" />
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={24} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setMenuOpen((m) => !m)}>
           <Ionicons name="ellipsis-vertical" size={22} color="#fff" />
         </TouchableOpacity>
@@ -239,7 +262,7 @@ export default function VideoSelectionScreen() {
         <View style={styles.menuPanel}>
           <TouchableOpacity style={styles.menuItem} onPress={reset}>
             <Ionicons name="refresh" size={18} color="#fff" />
-            <Text style={styles.menuText}>Restart (pick new videos)</Text>
+            <Text style={styles.menuText}>Restart (select new videos)</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -273,7 +296,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {phase === "anchor" && !loading1 &&
-                insideText("Scrub to your anchor frame, then ✓")}
+                overlayHint("Scrub to your anchor frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>
@@ -347,7 +370,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {phase === "align" && !loading2 &&
-                insideText("Scrub to match the top frame, then ✓")}
+                overlayHint("Match the top frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>

@@ -11,7 +11,6 @@ import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
-// Gesture + Reanimated
 import { PinchGestureHandler } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -42,6 +41,8 @@ export default function VideoCompareScreen() {
   const [swapGhost, setSwapGhost] = useState(false);
   const [elapsed, setElapsed] = useState(0); // ms
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loaded1, setLoaded1] = useState(false);
+  const [loaded2, setLoaded2] = useState(false);
 
   const offsetMs = offset * 1000;
 
@@ -57,7 +58,6 @@ export default function VideoCompareScreen() {
   const ghostScale = useSharedValue(1);
   const ghostBaseScale = useSharedValue(1);
 
-  // Pinch handlers
   const topPinchHandler = useAnimatedGestureHandler({
     onStart: () => {
       topBaseScale.value = topScale.value;
@@ -94,7 +94,6 @@ export default function VideoCompareScreen() {
     },
   });
 
-  // Animated styles
   const topVideoStyle = useAnimatedStyle(() => ({
     transform: [{ scale: topScale.value }],
   }));
@@ -107,23 +106,25 @@ export default function VideoCompareScreen() {
     transform: [{ scale: ghostScale.value }],
   }));
 
-  // Apply sync offset once on mount (initial positions in sync)
+  // Once both videos are loaded, apply sync offset
   useEffect(() => {
-    async function applyOffset() {
-      const start = 0;
-      setPosition(start);
-      setElapsed(start);
+    async function applyOffsetOnceReady() {
+      if (!loaded1 || !loaded2) return;
+
+      setIsPlaying(false);
+      setElapsed(0);
+      setPosition(0);
 
       if (offsetMs >= 0) {
-        await player1.current?.setPositionAsync(start);
-        await player2.current?.setPositionAsync(start + offsetMs);
+        await player1.current?.setPositionAsync(0);
+        await player2.current?.setPositionAsync(offsetMs);
       } else {
-        await player1.current?.setPositionAsync(start - offsetMs);
-        await player2.current?.setPositionAsync(start);
+        await player1.current?.setPositionAsync(-offsetMs);
+        await player2.current?.setPositionAsync(0);
       }
     }
-    applyOffset();
-  }, [offsetMs]);
+    applyOffsetOnceReady();
+  }, [loaded1, loaded2, offsetMs]);
 
   // Play / pause both videos in sync
   const handlePlayPause = async () => {
@@ -265,7 +266,9 @@ export default function VideoCompareScreen() {
       )}
 
       {/* Elapsed Time */}
-      <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
+      <View style={styles.elapsedWrapper}>
+        <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
+      </View>
 
       {/* VIDEO AREA */}
       <View style={styles.videoArea}>
@@ -273,26 +276,36 @@ export default function VideoCompareScreen() {
         {!ghost && (
           <>
             <PinchGestureHandler onGestureEvent={topPinchHandler}>
-              <Animated.View style={[styles.videoHalf, topVideoStyle]}>
-                <Video
-                  ref={player1}
-                  source={{ uri: video1 }}
-                  style={styles.videoFill}
-                  resizeMode="contain"
-                  onLoad={(s) => setDuration(s.durationMillis ?? 1)}
-                />
-              </Animated.View>
+              <View style={styles.videoHalf}>
+                <Animated.View style={[styles.innerVideoWrapper, topVideoStyle]}>
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={styles.videoFill}
+                    resizeMode="contain"
+                    onLoad={(s) => {
+                      setLoaded1(true);
+                      setDuration(s.durationMillis ?? 1);
+                    }}
+                  />
+                </Animated.View>
+              </View>
             </PinchGestureHandler>
 
             <PinchGestureHandler onGestureEvent={bottomPinchHandler}>
-              <Animated.View style={[styles.videoHalf, bottomVideoStyle]}>
-                <Video
-                  ref={player2}
-                  source={{ uri: video2 }}
-                  style={styles.videoFill}
-                  resizeMode="contain"
-                />
-              </Animated.View>
+              <View style={styles.videoHalf}>
+                <Animated.View
+                  style={[styles.innerVideoWrapper, bottomVideoStyle]}
+                >
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={styles.videoFill}
+                    resizeMode="contain"
+                    onLoad={() => setLoaded2(true)}
+                  />
+                </Animated.View>
+              </View>
             </PinchGestureHandler>
           </>
         )}
@@ -300,39 +313,41 @@ export default function VideoCompareScreen() {
         {/* Ghost Mode */}
         {ghost && (
           <PinchGestureHandler onGestureEvent={ghostPinchHandler}>
-            <Animated.View style={[styles.ghostContainer, ghostVideoStyle]}>
-              {!swapGhost ? (
-                <>
-                  <Video
-                    ref={player1}
-                    source={{ uri: video1 }}
-                    style={styles.videoFill}
-                    resizeMode="contain"
-                  />
-                  <Video
-                    ref={player2}
-                    source={{ uri: video2 }}
-                    style={[styles.videoFill, { opacity: ghostOpacity }]}
-                    resizeMode="contain"
-                  />
-                </>
-              ) : (
-                <>
-                  <Video
-                    ref={player2}
-                    source={{ uri: video2 }}
-                    style={styles.videoFill}
-                    resizeMode="contain"
-                  />
-                  <Video
-                    ref={player1}
-                    source={{ uri: video1 }}
-                    style={[styles.videoFill, { opacity: ghostOpacity }]}
-                    resizeMode="contain"
-                  />
-                </>
-              )}
-            </Animated.View>
+            <View style={styles.ghostContainer}>
+              <Animated.View style={[styles.innerVideoWrapper, ghostVideoStyle]}>
+                {!swapGhost ? (
+                  <>
+                    <Video
+                      ref={player1}
+                      source={{ uri: video1 }}
+                      style={styles.videoFill}
+                      resizeMode="contain"
+                    />
+                    <Video
+                      ref={player2}
+                      source={{ uri: video2 }}
+                      style={[styles.videoFill, { opacity: ghostOpacity }]}
+                      resizeMode="contain"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Video
+                      ref={player2}
+                      source={{ uri: video2 }}
+                      style={styles.videoFill}
+                      resizeMode="contain"
+                    />
+                    <Video
+                      ref={player1}
+                      source={{ uri: video1 }}
+                      style={[styles.videoFill, { opacity: ghostOpacity }]}
+                      resizeMode="contain"
+                    />
+                  </>
+                )}
+              </Animated.View>
+            </View>
           </PinchGestureHandler>
         )}
       </View>
@@ -393,8 +408,8 @@ export default function VideoCompareScreen() {
             <Ionicons name="swap-vertical" size={30} color="#fff" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={handleRestart}>
-            <Ionicons name="refresh" size={30} color="#fff" />
+          <TouchableOpacity onPress={() => handleReplay(true)}>
+            <Ionicons name="refresh-circle" size={34} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -436,13 +451,15 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
   },
+  elapsedWrapper: {
+    alignItems: "center",
+    marginTop: 6,
+    marginBottom: 4,
+  },
   elapsedText: {
     color: "#fff",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "600",
-    alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 5,
   },
   videoArea: {
     flex: 1,
@@ -460,9 +477,13 @@ const styles = StyleSheet.create({
   ghostContainer: {
     width: SCREEN_WIDTH * 0.98,
     height: SCREEN_HEIGHT * 0.68,
-    backgroundColor: "#111",
+    backgroundColor: "#000",
     borderRadius: 10,
     overflow: "hidden",
+  },
+  innerVideoWrapper: {
+    width: "100%",
+    height: "100%",
   },
   videoFill: {
     position: "absolute",
