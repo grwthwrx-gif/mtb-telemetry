@@ -11,6 +11,14 @@ import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
 
+// Gesture + Reanimated
+import { PinchGestureHandler } from "react-native-gesture-handler";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedGestureHandler,
+} from "react-native-reanimated";
+
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function VideoCompareScreen() {
@@ -20,7 +28,7 @@ export default function VideoCompareScreen() {
   const { video1, video2, offset } = route.params as {
     video1: string;
     video2: string;
-    offset: number;
+    offset: number; // seconds
   };
 
   const player1 = useRef<Video>(null);
@@ -28,37 +36,100 @@ export default function VideoCompareScreen() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(1);
+  const [position, setPosition] = useState(0); // ms
+  const [duration, setDuration] = useState(1); // ms
   const [ghost, setGhost] = useState(false);
   const [swapGhost, setSwapGhost] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(0); // ms
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // Apply sync offset once on mount
+  const offsetMs = offset * 1000;
+
+  // === ZOOM STATE ===
+  // Stacked: independent zoom for top and bottom
+  const topScale = useSharedValue(1);
+  const topBaseScale = useSharedValue(1);
+
+  const bottomScale = useSharedValue(1);
+  const bottomBaseScale = useSharedValue(1);
+
+  // Ghost: shared zoom
+  const ghostScale = useSharedValue(1);
+  const ghostBaseScale = useSharedValue(1);
+
+  // Pinch handlers
+  const topPinchHandler = useAnimatedGestureHandler({
+    onStart: () => {
+      topBaseScale.value = topScale.value;
+    },
+    onActive: (event) => {
+      let next = topBaseScale.value * event.scale;
+      if (next < 1) next = 1;
+      if (next > 4) next = 4;
+      topScale.value = next;
+    },
+  });
+
+  const bottomPinchHandler = useAnimatedGestureHandler({
+    onStart: () => {
+      bottomBaseScale.value = bottomScale.value;
+    },
+    onActive: (event) => {
+      let next = bottomBaseScale.value * event.scale;
+      if (next < 1) next = 1;
+      if (next > 4) next = 4;
+      bottomScale.value = next;
+    },
+  });
+
+  const ghostPinchHandler = useAnimatedGestureHandler({
+    onStart: () => {
+      ghostBaseScale.value = ghostScale.value;
+    },
+    onActive: (event) => {
+      let next = ghostBaseScale.value * event.scale;
+      if (next < 1) next = 1;
+      if (next > 4) next = 4;
+      ghostScale.value = next;
+    },
+  });
+
+  // Animated styles
+  const topVideoStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: topScale.value }],
+  }));
+
+  const bottomVideoStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bottomScale.value }],
+  }));
+
+  const ghostVideoStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ghostScale.value }],
+  }));
+
+  // Apply sync offset once on mount (initial positions in sync)
   useEffect(() => {
     async function applyOffset() {
-      await player1.current?.setPositionAsync(0);
-      await player2.current?.setPositionAsync(0);
+      const start = 0;
+      setPosition(start);
+      setElapsed(start);
 
-      if (offset > 0) {
-        await player2.current?.setPositionAsync(offset * 1000);
-      } else if (offset < 0) {
-        await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
+      if (offsetMs >= 0) {
+        await player1.current?.setPositionAsync(start);
+        await player2.current?.setPositionAsync(start + offsetMs);
+      } else {
+        await player1.current?.setPositionAsync(start - offsetMs);
+        await player2.current?.setPositionAsync(start);
       }
     }
     applyOffset();
-  }, [offset]);
+  }, [offsetMs]);
 
   // Play / pause both videos in sync
   const handlePlayPause = async () => {
-    // If at end, rewind to 0 before replaying
+    // If at end, rewind to synced start before replay
     if (!isPlaying && position >= duration) {
-      await player1.current?.setPositionAsync(0);
-      await player2.current?.setPositionAsync(offset > 0 ? offset * 1000 : 0);
-      if (offset < 0) {
-        await player1.current?.setPositionAsync(Math.abs(offset) * 1000);
-      }
-      setElapsed(0);
+      await handleReplay(false);
     }
 
     if (isPlaying) {
@@ -73,19 +144,27 @@ export default function VideoCompareScreen() {
     setIsPlaying(true);
   };
 
-  // Scrub both videos together
+  // Scrub both videos together while preserving offset
   const handleScrub = async (v: number) => {
     setPosition(v);
-    await player1.current?.setPositionAsync(v);
-    await player2.current?.setPositionAsync(v);
+
+    if (offsetMs >= 0) {
+      const p1 = Math.max(0, v);
+      const p2 = Math.max(0, v + offsetMs);
+      await player1.current?.setPositionAsync(p1);
+      await player2.current?.setPositionAsync(p2);
+    } else {
+      const p1 = Math.max(0, v - offsetMs); // offsetMs is negative
+      const p2 = Math.max(0, v);
+      await player1.current?.setPositionAsync(p1);
+      await player2.current?.setPositionAsync(p2);
+    }
   };
 
-  // Step forward/backward in seconds
+  // Small step forward/backward in seconds
   const handleStep = async (delta: number) => {
     const newPos = Math.max(0, position + delta * 1000);
-    setPosition(newPos);
-    await player1.current?.setPositionAsync(newPos);
-    await player2.current?.setPositionAsync(newPos);
+    await handleScrub(newPos);
   };
 
   const handleRate = async (r: number) => {
@@ -105,7 +184,7 @@ export default function VideoCompareScreen() {
           setElapsed(s.positionMillis);
           setPosition(s.positionMillis);
 
-          if (s.positionMillis >= s.durationMillis) {
+          if (s.durationMillis && s.positionMillis >= s.durationMillis) {
             setIsPlaying(false);
           }
         }
@@ -127,20 +206,63 @@ export default function VideoCompareScreen() {
 
   const ghostOpacity = 0.45;
 
-  const handleRestart = () => navigation.navigate("VideoSelection" as never);
+  // Replay from synced start (respecting offset)
+  const handleReplay = async (autoPlay = false) => {
+    setIsPlaying(false);
+    setElapsed(0);
+    setPosition(0);
+
+    if (offsetMs >= 0) {
+      await player1.current?.setPositionAsync(0);
+      await player2.current?.setPositionAsync(offsetMs);
+    } else {
+      await player1.current?.setPositionAsync(-offsetMs);
+      await player2.current?.setPositionAsync(0);
+    }
+
+    if (autoPlay) {
+      await player1.current?.playAsync();
+      await player2.current?.playAsync();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleRestart = () =>
+    navigation.navigate("VideoSelection" as never);
 
   return (
     <View style={styles.container}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("VideoSelection" as never)}
+        >
           <Ionicons name="arrow-back" size={30} color="#fff" />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleRestart}>
-          <Ionicons name="ellipsis-horizontal" size={34} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity onPress={() => handleReplay(false)}>
+            <Ionicons
+              name="play-skip-back-circle"
+              size={30}
+              color="#fff"
+              style={{ marginRight: 16 }}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setMenuOpen((m) => !m)}>
+            <Ionicons name="ellipsis-horizontal" size={30} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <TouchableOpacity style={styles.menuItem} onPress={handleRestart}>
+            <Ionicons name="refresh" size={18} color="#fff" />
+            <Text style={styles.menuText}>Restart (select new videos)</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Elapsed Time */}
       <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
@@ -150,63 +272,68 @@ export default function VideoCompareScreen() {
         {/* Stacked Mode */}
         {!ghost && (
           <>
-            <Video
-              ref={player1}
-              source={{ uri: video1 }}
-              style={styles.videoHalf}
-              resizeMode="contain"
-              onLoad={(s) => setDuration(s.durationMillis)}
-            />
-            <Video
-              ref={player2}
-              source={{ uri: video2 }}
-              style={styles.videoHalf}
-              resizeMode="contain"
-            />
+            <PinchGestureHandler onGestureEvent={topPinchHandler}>
+              <Animated.View style={[styles.videoHalf, topVideoStyle]}>
+                <Video
+                  ref={player1}
+                  source={{ uri: video1 }}
+                  style={styles.videoFill}
+                  resizeMode="contain"
+                  onLoad={(s) => setDuration(s.durationMillis ?? 1)}
+                />
+              </Animated.View>
+            </PinchGestureHandler>
+
+            <PinchGestureHandler onGestureEvent={bottomPinchHandler}>
+              <Animated.View style={[styles.videoHalf, bottomVideoStyle]}>
+                <Video
+                  ref={player2}
+                  source={{ uri: video2 }}
+                  style={styles.videoFill}
+                  resizeMode="contain"
+                />
+              </Animated.View>
+            </PinchGestureHandler>
           </>
         )}
 
         {/* Ghost Mode */}
         {ghost && (
-          <>
-            {!swapGhost ? (
-              <>
-                <Video
-                  ref={player1}
-                  source={{ uri: video1 }}
-                  style={styles.fullVideo}
-                  resizeMode="contain"
-                />
-                <View style={styles.ghostOverlayContainer}>
-                  <Video
-                    ref={player2}
-                    source={{ uri: video2 }}
-                    style={[styles.fullVideo, { opacity: ghostOpacity }]}
-                    resizeMode="contain"
-                  />
-                  <View style={styles.ghostGlow} pointerEvents="none" />
-                </View>
-              </>
-            ) : (
-              <>
-                <Video
-                  ref={player2}
-                  source={{ uri: video2 }}
-                  style={styles.fullVideo}
-                  resizeMode="contain"
-                />
-                <View style={styles.ghostOverlayContainer}>
+          <PinchGestureHandler onGestureEvent={ghostPinchHandler}>
+            <Animated.View style={[styles.ghostContainer, ghostVideoStyle]}>
+              {!swapGhost ? (
+                <>
                   <Video
                     ref={player1}
                     source={{ uri: video1 }}
-                    style={[styles.fullVideo, { opacity: ghostOpacity }]}
+                    style={styles.videoFill}
                     resizeMode="contain"
                   />
-                  <View style={styles.ghostGlow} pointerEvents="none" />
-                </View>
-              </>
-            )}
-          </>
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={[styles.videoFill, { opacity: ghostOpacity }]}
+                    resizeMode="contain"
+                  />
+                </>
+              ) : (
+                <>
+                  <Video
+                    ref={player2}
+                    source={{ uri: video2 }}
+                    style={styles.videoFill}
+                    resizeMode="contain"
+                  />
+                  <Video
+                    ref={player1}
+                    source={{ uri: video1 }}
+                    style={[styles.videoFill, { opacity: ghostOpacity }]}
+                    resizeMode="contain"
+                  />
+                </>
+              )}
+            </Animated.View>
+          </PinchGestureHandler>
         )}
       </View>
 
@@ -255,7 +382,11 @@ export default function VideoCompareScreen() {
 
         <View style={styles.bottomRow}>
           <TouchableOpacity onPress={() => setGhost(!ghost)}>
-            <Ionicons name="layers" size={30} color={ghost ? "#fff" : "#aaa"} />
+            <Ionicons
+              name="layers"
+              size={30}
+              color={ghost ? "#fff" : "#aaa"}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => setSwapGhost(!swapGhost)}>
@@ -285,6 +416,26 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  menuPanel: {
+    position: "absolute",
+    top: 90,
+    right: 22,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    zIndex: 10,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  menuText: {
+    color: "#fff",
+    fontSize: 14,
+  },
   elapsedText: {
     color: "#fff",
     fontSize: 22,
@@ -304,28 +455,19 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT * 0.28,
     backgroundColor: "#111",
     borderRadius: 10,
+    overflow: "hidden",
   },
-  fullVideo: {
+  ghostContainer: {
+    width: SCREEN_WIDTH * 0.98,
+    height: SCREEN_HEIGHT * 0.68,
+    backgroundColor: "#111",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  videoFill: {
     position: "absolute",
     width: "100%",
-    height: SCREEN_HEIGHT * 0.68,
-  },
-  ghostOverlayContainer: {
-    position: "absolute",
-    width: "100%",
-    height: SCREEN_HEIGHT * 0.68,
-  },
-  ghostGlow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderColor: "rgba(255,255,255,0.6)",
-    borderWidth: 1,
-    shadowColor: "#fff",
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
+    height: "100%",
   },
   controlsBlock: {
     width: "100%",
