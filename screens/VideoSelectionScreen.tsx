@@ -17,46 +17,35 @@ import { useNavigation } from "@react-navigation/native";
 
 const { width, height } = Dimensions.get("window");
 const FRAME_HEIGHT = Math.min(height * 0.30, 280);
-const FRAME_STEP_SEC = 1 / 30; // ~1 frame at 30fps
 
 type Phase = "select1" | "anchor" | "select2" | "align" | "ready";
 
 export default function VideoSelectionScreen() {
   const navigation = useNavigation();
 
-  // Flow state
   const [phase, setPhase] = useState<Phase>("select1");
 
-  // URIs
   const [video1, setVideo1] = useState<string | null>(null);
   const [video2, setVideo2] = useState<string | null>(null);
 
-  // Player refs
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
-  // Loading flags (for spinner)
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
 
-  // Durations & positions (seconds)
   const [duration1, setDuration1] = useState(0);
   const [duration2, setDuration2] = useState(0);
   const [pos1, setPos1] = useState(0);
   const [pos2, setPos2] = useState(0);
-
-  // Simple playing flags
   const [playing1, setPlaying1] = useState(false);
   const [playing2, setPlaying2] = useState(false);
 
-  // Sync data
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
   const [offset, setOffset] = useState<number>(0);
 
-  // Menu
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Permissions
   const ensurePermissions = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -74,18 +63,13 @@ export default function VideoSelectionScreen() {
     if (!ok) return;
 
     try {
-      if (which === 1) setLoading1(true);
-      if (which === 2) setLoading2(true);
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsMultipleSelection: true,
+        allowsMultipleSelection: true, // lets iOS show blue ticks
         quality: 1,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
-        if (which === 1) setLoading1(false);
-        if (which === 2) setLoading2(false);
         return;
       }
 
@@ -102,11 +86,15 @@ export default function VideoSelectionScreen() {
       console.error(e);
       Alert.alert("Error", "Unable to select video.");
       if (which === 1) setLoading1(false);
-      if (which === 2) setLoading2(false);
+      else setLoading2(false);
     }
   };
 
-  // Load + status handlers
+  // Video 1 events
+  const onLoadStart1 = () => {
+    setLoading1(true);
+  };
+
   const onLoad1 = (status: AVPlaybackStatusSuccess) => {
     setDuration1((status.durationMillis ?? 0) / 1000);
     setLoading1(false);
@@ -117,6 +105,11 @@ export default function VideoSelectionScreen() {
     const newPos = (status.positionMillis ?? 0) / 1000;
     setPos1(newPos);
     setPlaying1(!!status.isPlaying);
+  };
+
+  // Video 2 events
+  const onLoadStart2 = () => {
+    setLoading2(true);
   };
 
   const onLoad2 = (status: AVPlaybackStatusSuccess) => {
@@ -131,53 +124,53 @@ export default function VideoSelectionScreen() {
     setPlaying2(!!status.isPlaying);
   };
 
-  // Play / pause individual
   const togglePlay = async (which: 1 | 2) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
-
-    const status = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (!status.isLoaded) return;
-
-    if (status.isPlaying) {
+    const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
+    if (s.isLoaded && s.isPlaying) {
       await ref.pauseAsync();
     } else {
       await ref.playAsync();
     }
   };
 
-  // Scrub to position (seconds) using local state
   const scrubTo = async (which: 1 | 2, valueSec: number) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
-
     const clamped = Math.max(0, valueSec);
     await ref.setPositionAsync(clamped * 1000);
-
     if (which === 1) setPos1(clamped);
     else setPos2(clamped);
   };
 
-  // Fine nudge using current state only (no status async)
-  const nudge = async (which: 1 | 2, deltaSec: number) => {
-    if (which === 1) {
-      const next = Math.max(0, pos1 + deltaSec);
-      await scrubTo(1, next);
-    } else {
-      const next = Math.max(0, pos2 + deltaSec);
-      await scrubTo(2, next);
-    }
+  const nudgeSmall = async (which: 1 | 2, deltaSeconds: number) => {
+    const ref = which === 1 ? player1.current : player2.current;
+    if (!ref) return;
+    const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
+    if (!s.isLoaded) return;
+    const current = (s.positionMillis ?? 0) / 1000;
+    const next = Math.max(0, current + deltaSeconds);
+    await ref.setPositionAsync(next * 1000);
+    if (which === 1) setPos1(next);
+    else setPos2(next);
   };
 
   const confirmAnchor = async () => {
-    // Lock in current position of video1 as anchor
-    setAnchorTime(pos1);
+    if (!player1.current) return;
+    const s = (await player1.current.getStatusAsync()) as AVPlaybackStatusSuccess;
+    if (!s.isLoaded) return;
+    const t = (s.positionMillis ?? 0) / 1000;
+    setAnchorTime(t);
     setPhase("select2");
   };
 
-  const confirmAlign = () => {
-    if (anchorTime == null) return;
-    const off = pos2 - anchorTime;
+  const confirmAlign = async () => {
+    if (!player2.current || anchorTime == null) return;
+    const s = (await player2.current.getStatusAsync()) as AVPlaybackStatusSuccess;
+    if (!s.isLoaded) return;
+    const t = (s.positionMillis ?? 0) / 1000;
+    const off = t - anchorTime;
     setOffset(off);
     setPhase("ready");
   };
@@ -216,31 +209,25 @@ export default function VideoSelectionScreen() {
 
   const FineControls = ({ which }: { which: 1 | 2 }) => (
     <View style={styles.fineRow}>
-      <TouchableOpacity onPress={() => nudge(which, -0.5)}>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -0.5)}>
         <Text style={styles.fineBtn}>-0.5s</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, -0.1)}>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -0.1)}>
         <Text style={styles.fineBtn}>-0.1s</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, -FRAME_STEP_SEC)}>
-        <Text style={styles.fineBtn}>-1f</Text>
       </TouchableOpacity>
 
       <View style={{ width: 8 }} />
 
-      <TouchableOpacity onPress={() => nudge(which, FRAME_STEP_SEC)}>
-        <Text style={styles.fineBtn}>+1f</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, 0.1)}>
+      <TouchableOpacity onPress={() => nudgeSmall(which, 0.1)}>
         <Text style={styles.fineBtn}>+0.1s</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, 0.5)}>
+      <TouchableOpacity onPress={() => nudgeSmall(which, 0.5)}>
         <Text style={styles.fineBtn}>+0.5s</Text>
       </TouchableOpacity>
     </View>
   );
 
-  const overlayHint = (text: string) => (
+  const insideText = (text: string) => (
     <View style={styles.overlayHint}>
       <Text style={styles.overlayHintText}>{text}</Text>
     </View>
@@ -282,6 +269,7 @@ export default function VideoSelectionScreen() {
                 style={styles.video}
                 resizeMode="contain"
                 useNativeControls={false}
+                onLoadStart={onLoadStart1}
                 onLoad={(s) => onLoad1(s as AVPlaybackStatusSuccess)}
                 onPlaybackStatusUpdate={(s) =>
                   "isLoaded" in s &&
@@ -296,7 +284,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {phase === "anchor" && !loading1 &&
-                overlayHint("Scrub to your anchor frame, then ✓")}
+                insideText("Scrub to your anchor frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>
@@ -332,7 +320,7 @@ export default function VideoSelectionScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.stepHint}>
-              Tip: use fine controls to get the start point exactly right.
+              Tip: use the fine controls to get the start point exactly right.
             </Text>
           </>
         )}
@@ -356,6 +344,7 @@ export default function VideoSelectionScreen() {
                 style={styles.video}
                 resizeMode="contain"
                 useNativeControls={false}
+                onLoadStart={onLoadStart2}
                 onLoad={(s) => onLoad2(s as AVPlaybackStatusSuccess)}
                 onPlaybackStatusUpdate={(s) =>
                   "isLoaded" in s &&
@@ -370,7 +359,7 @@ export default function VideoSelectionScreen() {
                 </View>
               )}
               {phase === "align" && !loading2 &&
-                overlayHint("Match the top frame, then ✓")}
+                insideText("Scrub to match the top frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>
@@ -487,7 +476,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 8,
     alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
@@ -518,7 +507,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     paddingHorizontal: 8,
     paddingVertical: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: 8,
   },
   stepHint: {
@@ -530,6 +519,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   loadingText: {
     color: "#fff",

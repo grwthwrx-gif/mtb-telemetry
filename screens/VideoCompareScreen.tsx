@@ -6,17 +6,10 @@ import {
   TouchableOpacity,
   Dimensions,
 } from "react-native";
-import { Video } from "expo-av";
+import { Video, AVPlaybackStatusSuccess } from "expo-av";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { useRoute, useNavigation } from "@react-navigation/native";
-
-import { PinchGestureHandler } from "react-native-gesture-handler";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useAnimatedGestureHandler,
-} from "react-native-reanimated";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -35,108 +28,72 @@ export default function VideoCompareScreen() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [position, setPosition] = useState(0); // ms
-  const [duration, setDuration] = useState(1); // ms
+  const [position, setPosition] = useState(0); // ms (global scrub position)
+  const [duration, setDuration] = useState(1); // ms (based on video1)
+  const [elapsed, setElapsed] = useState(0); // ms (player1 time)
   const [ghost, setGhost] = useState(false);
   const [swapGhost, setSwapGhost] = useState(false);
-  const [elapsed, setElapsed] = useState(0); // ms
   const [menuOpen, setMenuOpen] = useState(false);
-  const [loaded1, setLoaded1] = useState(false);
-  const [loaded2, setLoaded2] = useState(false);
 
   const offsetMs = offset * 1000;
+  const ghostOpacity = 0.45;
 
-  // === ZOOM STATE ===
-  // Stacked: independent zoom for top and bottom
-  const topScale = useSharedValue(1);
-  const topBaseScale = useSharedValue(1);
+  // Helper to compute synced positions for each video based on global scrub position
+  const getSyncedPositions = (v: number) => {
+    let p1 = 0;
+    let p2 = 0;
 
-  const bottomScale = useSharedValue(1);
-  const bottomBaseScale = useSharedValue(1);
-
-  // Ghost: shared zoom
-  const ghostScale = useSharedValue(1);
-  const ghostBaseScale = useSharedValue(1);
-
-  const topPinchHandler = useAnimatedGestureHandler({
-    onStart: () => {
-      topBaseScale.value = topScale.value;
-    },
-    onActive: (event) => {
-      let next = topBaseScale.value * event.scale;
-      if (next < 1) next = 1;
-      if (next > 4) next = 4;
-      topScale.value = next;
-    },
-  });
-
-  const bottomPinchHandler = useAnimatedGestureHandler({
-    onStart: () => {
-      bottomBaseScale.value = bottomScale.value;
-    },
-    onActive: (event) => {
-      let next = bottomBaseScale.value * event.scale;
-      if (next < 1) next = 1;
-      if (next > 4) next = 4;
-      bottomScale.value = next;
-    },
-  });
-
-  const ghostPinchHandler = useAnimatedGestureHandler({
-    onStart: () => {
-      ghostBaseScale.value = ghostScale.value;
-    },
-    onActive: (event) => {
-      let next = ghostBaseScale.value * event.scale;
-      if (next < 1) next = 1;
-      if (next > 4) next = 4;
-      ghostScale.value = next;
-    },
-  });
-
-  const topVideoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: topScale.value }],
-  }));
-
-  const bottomVideoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: bottomScale.value }],
-  }));
-
-  const ghostVideoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: ghostScale.value }],
-  }));
-
-  // Once both videos are loaded, apply sync offset
-  useEffect(() => {
-    async function applyOffsetOnceReady() {
-      if (!loaded1 || !loaded2) return;
-
-      setIsPlaying(false);
-      setElapsed(0);
-      setPosition(0);
-
-      if (offsetMs >= 0) {
-        await player1.current?.setPositionAsync(0);
-        await player2.current?.setPositionAsync(offsetMs);
-      } else {
-        await player1.current?.setPositionAsync(-offsetMs);
-        await player2.current?.setPositionAsync(0);
-      }
+    if (offsetMs >= 0) {
+      // video2 lags behind (arrives later at anchor)
+      p1 = Math.max(0, v);
+      p2 = Math.max(0, v + offsetMs);
+    } else {
+      // video2 is ahead (negative offset)
+      p1 = Math.max(0, v - offsetMs); // offsetMs is negative here
+      p2 = Math.max(0, v);
     }
-    applyOffsetOnceReady();
-  }, [loaded1, loaded2, offsetMs]);
 
-  // Play / pause both videos in sync
+    return { p1, p2 };
+  };
+
+  // Sync both videos to a global position v (ms)
+  const syncToPosition = async (v: number) => {
+    const { p1, p2 } = getSyncedPositions(v);
+    await player1.current?.setPositionAsync(p1);
+    await player2.current?.setPositionAsync(p2);
+    setPosition(v);
+    setElapsed(p1);
+  };
+
+  // Initial sync when screen mounts
+  useEffect(() => {
+    syncToPosition(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offsetMs]);
+
+  // Pause both when unmounting (or if navigation removes screen)
+  useEffect(() => {
+    return () => {
+      player1.current?.pauseAsync();
+      player2.current?.pauseAsync();
+      setIsPlaying(false);
+    };
+  }, []);
+
+  const stopPlayback = async () => {
+    await player1.current?.pauseAsync();
+    await player2.current?.pauseAsync();
+    setIsPlaying(false);
+  };
+
   const handlePlayPause = async () => {
-    // If at end, rewind to synced start before replay
+    // If at (or beyond) end, rewind to synced start first
     if (!isPlaying && position >= duration) {
       await handleReplay(false);
     }
 
     if (isPlaying) {
-      await player1.current?.pauseAsync();
-      await player2.current?.pauseAsync();
-      setIsPlaying(false);
+      await stopPlayback();
       return;
     }
 
@@ -145,55 +102,58 @@ export default function VideoCompareScreen() {
     setIsPlaying(true);
   };
 
-  // Scrub both videos together while preserving offset
+  // Scrub slider: update both videos and keep offset consistent
   const handleScrub = async (v: number) => {
-    setPosition(v);
-
-    if (offsetMs >= 0) {
-      const p1 = Math.max(0, v);
-      const p2 = Math.max(0, v + offsetMs);
-      await player1.current?.setPositionAsync(p1);
-      await player2.current?.setPositionAsync(p2);
-    } else {
-      const p1 = Math.max(0, v - offsetMs); // offsetMs is negative
-      const p2 = Math.max(0, v);
-      await player1.current?.setPositionAsync(p1);
-      await player2.current?.setPositionAsync(p2);
-    }
+    await syncToPosition(v);
   };
 
-  // Small step forward/backward in seconds
-  const handleStep = async (delta: number) => {
-    const newPos = Math.max(0, position + delta * 1000);
-    await handleScrub(newPos);
+  // Small step forward/backward (in seconds)
+  const handleStep = async (deltaSeconds: number) => {
+    const next = Math.max(0, position + deltaSeconds * 1000);
+    await syncToPosition(next);
   };
 
-  const handleRate = async (r: number) => {
-    setPlaybackRate(r);
-    await player1.current?.setRateAsync(r, true);
-    await player2.current?.setRateAsync(r, true);
+  // Playback rate
+  const handleRate = async (rate: number) => {
+    setPlaybackRate(rate);
+    await player1.current?.setRateAsync(rate, true);
+    await player2.current?.setRateAsync(rate, true);
   };
 
-  // Track elapsed time based on player1
+  // Track elapsed & stop at end
   useEffect(() => {
     let interval: NodeJS.Timer | null = null;
 
-    if (isPlaying) {
-      interval = setInterval(async () => {
-        const s = await player1.current?.getStatusAsync();
-        if (s?.positionMillis != null) {
-          setElapsed(s.positionMillis);
-          setPosition(s.positionMillis);
+    const tick = async () => {
+      const status = (await player1.current?.getStatusAsync()) as
+        | AVPlaybackStatusSuccess
+        | undefined;
+      if (!status || !status.isLoaded) return;
 
-          if (s.durationMillis && s.positionMillis >= s.durationMillis) {
-            setIsPlaying(false);
-          }
-        }
-      }, 120);
+      const pos = status.positionMillis ?? 0;
+      const dur =
+        status.durationMillis ??
+        status.playableDurationMillis ??
+        duration ??
+        1;
+
+      setElapsed(pos);
+      setPosition(pos);
+      setDuration(dur);
+
+      if (pos >= dur) {
+        setIsPlaying(false);
+      }
+    };
+
+    if (isPlaying) {
+      interval = setInterval(tick, 120);
     }
 
-    return () => interval && clearInterval(interval);
-  }, [isPlaying]);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, duration]);
 
   const formatTime = (ms: number) => {
     const s = ms / 1000;
@@ -205,21 +165,10 @@ export default function VideoCompareScreen() {
     return `${m}:${sec.toString().padStart(2, "0")}:${hundredths}`;
   };
 
-  const ghostOpacity = 0.45;
-
   // Replay from synced start (respecting offset)
   const handleReplay = async (autoPlay = false) => {
-    setIsPlaying(false);
-    setElapsed(0);
-    setPosition(0);
-
-    if (offsetMs >= 0) {
-      await player1.current?.setPositionAsync(0);
-      await player2.current?.setPositionAsync(offsetMs);
-    } else {
-      await player1.current?.setPositionAsync(-offsetMs);
-      await player2.current?.setPositionAsync(0);
-    }
+    await stopPlayback();
+    await syncToPosition(0);
 
     if (autoPlay) {
       await player1.current?.playAsync();
@@ -228,17 +177,22 @@ export default function VideoCompareScreen() {
     }
   };
 
-  const handleRestart = () =>
+  const handleRestart = async () => {
+    await stopPlayback();
     navigation.navigate("VideoSelection" as never);
+  };
+
+  const handleBack = async () => {
+    await stopPlayback();
+    navigation.navigate("VideoSelection" as never);
+  };
 
   return (
     <View style={styles.container}>
-      {/* Top Bar */}
+      {/* TOP BAR */}
       <View style={styles.topBar}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("VideoSelection" as never)}
-        >
-          <Ionicons name="arrow-back" size={30} color="#fff" />
+        <TouchableOpacity onPress={handleBack}>
+          <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
 
         <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -247,11 +201,11 @@ export default function VideoCompareScreen() {
               name="play-skip-back-circle"
               size={30}
               color="#fff"
-              style={{ marginRight: 16 }}
+              style={{ marginRight: 18 }}
             />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setMenuOpen((m) => !m)}>
-            <Ionicons name="ellipsis-horizontal" size={30} color="#fff" />
+            <Ionicons name="ellipsis-horizontal" size={28} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -265,95 +219,87 @@ export default function VideoCompareScreen() {
         </View>
       )}
 
-      {/* Elapsed Time */}
-      <View style={styles.elapsedWrapper}>
-        <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
-      </View>
+      {/* ELAPSED TIME */}
+      <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
 
       {/* VIDEO AREA */}
       <View style={styles.videoArea}>
-        {/* Stacked Mode */}
-        {!ghost && (
+        {!ghost ? (
+          // STACKED VIEW
           <>
-            <PinchGestureHandler onGestureEvent={topPinchHandler}>
-              <View style={styles.videoHalf}>
-                <Animated.View style={[styles.innerVideoWrapper, topVideoStyle]}>
-                  <Video
-                    ref={player1}
-                    source={{ uri: video1 }}
-                    style={styles.videoFill}
-                    resizeMode="contain"
-                    onLoad={(s) => {
-                      setLoaded1(true);
-                      setDuration(s.durationMillis ?? 1);
-                    }}
-                  />
-                </Animated.View>
-              </View>
-            </PinchGestureHandler>
-
-            <PinchGestureHandler onGestureEvent={bottomPinchHandler}>
-              <View style={styles.videoHalf}>
-                <Animated.View
-                  style={[styles.innerVideoWrapper, bottomVideoStyle]}
-                >
-                  <Video
-                    ref={player2}
-                    source={{ uri: video2 }}
-                    style={styles.videoFill}
-                    resizeMode="contain"
-                    onLoad={() => setLoaded2(true)}
-                  />
-                </Animated.View>
-              </View>
-            </PinchGestureHandler>
-          </>
-        )}
-
-        {/* Ghost Mode */}
-        {ghost && (
-          <PinchGestureHandler onGestureEvent={ghostPinchHandler}>
-            <View style={styles.ghostContainer}>
-              <Animated.View style={[styles.innerVideoWrapper, ghostVideoStyle]}>
-                {!swapGhost ? (
-                  <>
-                    <Video
-                      ref={player1}
-                      source={{ uri: video1 }}
-                      style={styles.videoFill}
-                      resizeMode="contain"
-                    />
-                    <Video
-                      ref={player2}
-                      source={{ uri: video2 }}
-                      style={[styles.videoFill, { opacity: ghostOpacity }]}
-                      resizeMode="contain"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <Video
-                      ref={player2}
-                      source={{ uri: video2 }}
-                      style={styles.videoFill}
-                      resizeMode="contain"
-                    />
-                    <Video
-                      ref={player1}
-                      source={{ uri: video1 }}
-                      style={[styles.videoFill, { opacity: ghostOpacity }]}
-                      resizeMode="contain"
-                    />
-                  </>
-                )}
-              </Animated.View>
+            <View style={styles.videoHalfTop}>
+              <Video
+                ref={player1}
+                source={{ uri: video1 }}
+                style={styles.video}
+                resizeMode="contain"
+                useNativeControls={false}
+                onLoad={(status) => {
+                  const s = status as AVPlaybackStatusSuccess;
+                  const d =
+                    s.durationMillis ??
+                    s.playableDurationMillis ??
+                    duration ??
+                    1;
+                  setDuration(d);
+                }}
+              />
             </View>
-          </PinchGestureHandler>
+            <View style={styles.videoHalfBottom}>
+              <Video
+                ref={player2}
+                source={{ uri: video2 }}
+                style={styles.video}
+                resizeMode="contain"
+                useNativeControls={false}
+              />
+            </View>
+          </>
+        ) : (
+          // GHOST OVERLAY VIEW
+          <View style={styles.ghostFrame}>
+            {!swapGhost ? (
+              <>
+                <Video
+                  ref={player1}
+                  source={{ uri: video1 }}
+                  style={styles.video}
+                  resizeMode="contain"
+                  useNativeControls={false}
+                />
+                <Video
+                  ref={player2}
+                  source={{ uri: video2 }}
+                  style={[styles.video, { opacity: ghostOpacity }]}
+                  resizeMode="contain"
+                  useNativeControls={false}
+                />
+              </>
+            ) : (
+              <>
+                <Video
+                  ref={player2}
+                  source={{ uri: video2 }}
+                  style={styles.video}
+                  resizeMode="contain"
+                  useNativeControls={false}
+                />
+                <Video
+                  ref={player1}
+                  source={{ uri: video1 }}
+                  style={[styles.video, { opacity: ghostOpacity }]}
+                  resizeMode="contain"
+                  useNativeControls={false}
+                />
+              </>
+            )}
+          </View>
         )}
       </View>
 
-      {/* CONTROL BLOCK */}
+      {/* CONTROLS BLOCK */}
       <View style={styles.controlsBlock}>
+        {/* Main playback row */}
         <View style={styles.mainRow}>
           <TouchableOpacity onPress={() => handleStep(-0.5)}>
             <Ionicons name="play-back" size={32} color="#fff" />
@@ -362,7 +308,7 @@ export default function VideoCompareScreen() {
           <TouchableOpacity onPress={handlePlayPause}>
             <Ionicons
               name={isPlaying ? "pause-circle" : "play-circle"}
-              size={56}
+              size={58}
               color="#fff"
             />
           </TouchableOpacity>
@@ -374,16 +320,15 @@ export default function VideoCompareScreen() {
           <TouchableOpacity onPress={() => handleRate(0.25)}>
             <Text style={styles.rate}>¼×</Text>
           </TouchableOpacity>
-
           <TouchableOpacity onPress={() => handleRate(0.5)}>
             <Text style={styles.rate}>½×</Text>
           </TouchableOpacity>
-
           <TouchableOpacity onPress={() => handleRate(1)}>
             <Text style={styles.rate}>1×</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Scrub slider (synced with offset) */}
         <Slider
           style={styles.scrubSlider}
           minimumValue={0}
@@ -395,6 +340,7 @@ export default function VideoCompareScreen() {
           thumbTintColor="#fff"
         />
 
+        {/* Ghost & restart controls */}
         <View style={styles.bottomRow}>
           <TouchableOpacity onPress={() => setGhost(!ghost)}>
             <Ionicons
@@ -409,7 +355,7 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => handleReplay(true)}>
-            <Ionicons name="refresh-circle" size={34} color="#fff" />
+            <Ionicons name="refresh-circle" size={32} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -417,8 +363,7 @@ export default function VideoCompareScreen() {
   );
 }
 
-/* STYLES */
-
+// STYLES
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -426,7 +371,7 @@ const styles = StyleSheet.create({
   },
   topBar: {
     marginTop: 55,
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -434,7 +379,7 @@ const styles = StyleSheet.create({
   menuPanel: {
     position: "absolute",
     top: 90,
-    right: 22,
+    right: 20,
     backgroundColor: "rgba(0,0,0,0.8)",
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -451,48 +396,49 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
   },
-  elapsedWrapper: {
-    alignItems: "center",
-    marginTop: 6,
-    marginBottom: 4,
-  },
   elapsedText: {
     color: "#fff",
     fontSize: 20,
     fontWeight: "600",
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 4,
   },
   videoArea: {
     flex: 1,
-    width: "100%",
-    justifyContent: "space-evenly",
     alignItems: "center",
+    justifyContent: "space-evenly",
   },
-  videoHalf: {
+  videoHalfTop: {
     width: SCREEN_WIDTH * 0.95,
-    height: SCREEN_HEIGHT * 0.28,
+    height: SCREEN_HEIGHT * 0.26,
     backgroundColor: "#111",
     borderRadius: 10,
     overflow: "hidden",
   },
-  ghostContainer: {
-    width: SCREEN_WIDTH * 0.98,
-    height: SCREEN_HEIGHT * 0.68,
-    backgroundColor: "#000",
+  videoHalfBottom: {
+    width: SCREEN_WIDTH * 0.95,
+    height: SCREEN_HEIGHT * 0.26,
+    backgroundColor: "#111",
     borderRadius: 10,
     overflow: "hidden",
   },
-  innerVideoWrapper: {
-    width: "100%",
-    height: "100%",
+  ghostFrame: {
+    width: SCREEN_WIDTH * 0.96,
+    height: SCREEN_HEIGHT * 0.60,
+    backgroundColor: "#111",
+    borderRadius: 10,
+    overflow: "hidden",
   },
-  videoFill: {
-    position: "absolute",
+  video: {
     width: "100%",
     height: "100%",
+    position: "absolute",
   },
   controlsBlock: {
     width: "100%",
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingBottom: 16,
     backgroundColor: "rgba(255,255,255,0.06)",
   },
   mainRow: {
@@ -516,6 +462,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingBottom: 4,
   },
 });
