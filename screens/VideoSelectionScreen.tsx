@@ -16,7 +16,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 const { width, height } = Dimensions.get("window");
-const FRAME_HEIGHT = Math.min(height * 0.30, 280);
+const FRAME_HEIGHT = Math.min(height * 0.3, 280);
+
+// Assume 30fps for fine frame nudging
+const FRAME_STEP_SEC = 1 / 30;
 
 type Phase = "select1" | "anchor" | "select2" | "align" | "ready";
 
@@ -76,9 +79,11 @@ export default function VideoSelectionScreen() {
       const uri = result.assets[0].uri;
 
       if (which === 1) {
+        setLoading1(true); // show spinner in frame immediately
         setVideo1(uri);
         setPhase("anchor");
       } else {
+        setLoading2(true); // show spinner in frame immediately
         setVideo2(uri);
         setPhase("align");
       }
@@ -105,6 +110,10 @@ export default function VideoSelectionScreen() {
     const newPos = (status.positionMillis ?? 0) / 1000;
     setPos1(newPos);
     setPlaying1(!!status.isPlaying);
+    // Show spinner when buffering
+    if (typeof status.isBuffering === "boolean") {
+      setLoading1(status.isBuffering);
+    }
   };
 
   // Video 2 events
@@ -122,6 +131,10 @@ export default function VideoSelectionScreen() {
     const newPos = (status.positionMillis ?? 0) / 1000;
     setPos2(newPos);
     setPlaying2(!!status.isPlaying);
+    // Show spinner when buffering
+    if (typeof status.isBuffering === "boolean") {
+      setLoading2(status.isBuffering);
+    }
   };
 
   const togglePlay = async (which: 1 | 2) => {
@@ -130,7 +143,7 @@ export default function VideoSelectionScreen() {
     const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
     if (s.isLoaded && s.isPlaying) {
       await ref.pauseAsync();
-    } else {
+    } else if (s.isLoaded) {
       await ref.playAsync();
     }
   };
@@ -207,22 +220,23 @@ export default function VideoSelectionScreen() {
     setMenuOpen(false);
   };
 
+  // Fine controls: true frame-by-frame nudging
   const FineControls = ({ which }: { which: 1 | 2 }) => (
     <View style={styles.fineRow}>
-      <TouchableOpacity onPress={() => nudgeSmall(which, -0.5)}>
-        <Text style={styles.fineBtn}>-0.5s</Text>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -10 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>-10f</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudgeSmall(which, -0.1)}>
-        <Text style={styles.fineBtn}>-0.1s</Text>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -1 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>-1f</Text>
       </TouchableOpacity>
 
       <View style={{ width: 8 }} />
 
-      <TouchableOpacity onPress={() => nudgeSmall(which, 0.1)}>
-        <Text style={styles.fineBtn}>+0.1s</Text>
+      <TouchableOpacity onPress={() => nudgeSmall(which, 1 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>+1f</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudgeSmall(which, 0.5)}>
-        <Text style={styles.fineBtn}>+0.5s</Text>
+      <TouchableOpacity onPress={() => nudgeSmall(which, 10 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>+10f</Text>
       </TouchableOpacity>
     </View>
   );
@@ -320,7 +334,7 @@ export default function VideoSelectionScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.stepHint}>
-              Tip: use the fine controls to get the start point exactly right.
+              Tip: use the frame controls to get the start point exactly right.
             </Text>
           </>
         )}
@@ -399,7 +413,7 @@ export default function VideoSelectionScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.stepHint}>
-              Match the same point as the first video, then confirm.
+              Use the frame-step controls to line this up with the first video.
             </Text>
           </>
         )}

@@ -15,7 +15,7 @@ export default function IntroScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       navigation.navigate("VideoSelection" as never);
-    }, 1500); // 1.5s branded intro
+    }, 3500); // extended intro time (3.5s)
 
     return () => clearTimeout(timer);
   }, []);
@@ -23,7 +23,7 @@ export default function IntroScreen() {
   return (
     <View style={styles.container}>
       <Animated.View
-        entering={FadeIn.duration(600)}
+        entering={FadeIn.duration(700)}
         exiting={FadeOut.duration(300)}
         layout={Layout}
         style={styles.center}
@@ -36,7 +36,7 @@ export default function IntroScreen() {
         />
 
         {/* BRAND LINE */}
-        <Text style={styles.brandLine}>Psynk — Connect. Compare. Compete.</Text>
+        <Text style={styles.brandLine}>Connect, Compare, Compete</Text>
 
         {/* TAGLINE */}
         <Text style={styles.tagline}>
@@ -50,7 +50,7 @@ export default function IntroScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B0C10", // exact brand black
+    backgroundColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -65,16 +65,17 @@ const styles = StyleSheet.create({
   },
   brandLine: {
     fontFamily: "Orbitron-Bold",
-    fontSize: 20,
+    fontSize: 22,
     color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   tagline: {
     fontFamily: "Orbitron",
     fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.82)",
     textAlign: "center",
     lineHeight: 20,
+    opacity: 0.95,
   },
 });
