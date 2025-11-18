@@ -14,14 +14,12 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
 } from "react-native-reanimated";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Assume 30fps for step accuracy
-const FRAME_STEP_MS = 1000 / 30;
+const FRAME_STEP_MS = 1000 / 30; // 30fps stepping
 
 export default function VideoCompareScreen() {
   const route = useRoute();
@@ -30,7 +28,7 @@ export default function VideoCompareScreen() {
   const { video1, video2, offset } = route.params as {
     video1: string;
     video2: string;
-    offset: number; // seconds
+    offset: number;
   };
 
   const player1 = useRef<Video>(null);
@@ -38,9 +36,9 @@ export default function VideoCompareScreen() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [position, setPosition] = useState(0); // ms (global scrub position)
-  const [duration, setDuration] = useState(1); // ms (based on video1)
-  const [elapsed, setElapsed] = useState(0); // ms (player1 time)
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(1);
+  const [elapsed, setElapsed] = useState(0);
   const [ghost, setGhost] = useState(false);
   const [swapGhost, setSwapGhost] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -53,63 +51,54 @@ export default function VideoCompareScreen() {
   const offsetMs = offset * 1000;
   const ghostOpacity = 0.45;
 
-  // Pinch-to-zoom
-  const scale = useSharedValue(1);
+  const baseScale = useSharedValue(1);
+  const pinchScale = useSharedValue(1);
+
   const pinch = Gesture.Pinch()
     .onUpdate((event) => {
-      scale.value = event.scale;
+      pinchScale.value = event.scale;
     })
     .onEnd(() => {
-      // Snap back to 1
-      scale.value = withTiming(1, { duration: 180 });
+      baseScale.value *= pinchScale.value;
+      pinchScale.value = 1;
     });
+
   const zoomStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: baseScale.value * pinchScale.value }],
   }));
 
-  // Compute synced positions for each video given a global "position" v (ms)
   const getSyncedPositions = (v: number) => {
     let p1 = 0;
     let p2 = 0;
 
     if (offsetMs >= 0) {
-      // video2 lags behind (arrives later at anchor)
       p1 = Math.max(0, v);
       p2 = Math.max(0, v + offsetMs);
     } else {
-      // video2 is ahead (negative offset)
-      p1 = Math.max(0, v - offsetMs); // offsetMs is negative here
+      p1 = Math.max(0, v - offsetMs);
       p2 = Math.max(0, v);
     }
-
     return { p1, p2 };
   };
 
-  // Sync both videos to a global position v (ms)
   const syncToPosition = async (v: number) => {
     const { p1, p2 } = getSyncedPositions(v);
-
     await player1.current?.setPositionAsync(p1);
     await player2.current?.setPositionAsync(p2);
-
     setPosition(v);
     setElapsed(p1);
   };
 
-  // Initial sync when both videos are loaded
   useEffect(() => {
     if (ready1 && ready2) {
       syncToPosition(0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready1, ready2, offsetMs]);
 
-  // Pause both when unmounting (or when leaving the screen)
   useEffect(() => {
     return () => {
       stopPlayback();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopPlayback = async () => {
@@ -119,41 +108,34 @@ export default function VideoCompareScreen() {
   };
 
   const handlePlayPause = async () => {
-    // If at (or beyond) end, rewind to synced start first (but remain paused)
     if (!isPlaying && position >= duration) {
-      await handleReplay(); // restart to 0, stay paused
+      await handleReplay();
     }
-
     if (isPlaying) {
       await stopPlayback();
       return;
     }
-
     await player1.current?.playAsync();
     await player2.current?.playAsync();
     setIsPlaying(true);
   };
 
-  // Scrub slider: update both videos and keep offset consistent
   const handleScrub = async (v: number) => {
     await syncToPosition(v);
   };
 
-  // Frame-accurate step forward/backward (≈33ms at 30fps)
   const handleFrameStep = async (direction: "back" | "forward") => {
     const delta = direction === "forward" ? FRAME_STEP_MS : -FRAME_STEP_MS;
     const next = Math.max(0, position + delta);
     await syncToPosition(next);
   };
 
-  // Playback rate
   const handleRate = async (rate: number) => {
     setPlaybackRate(rate);
     await player1.current?.setRateAsync(rate, true);
     await player2.current?.setRateAsync(rate, true);
   };
 
-  // Track elapsed & duration from player1's status
   const handleStatusUpdate1 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
 
@@ -179,7 +161,6 @@ export default function VideoCompareScreen() {
 
   const handleStatusUpdate2 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
-
     if (typeof status.isBuffering === "boolean") {
       setLoading2(status.isBuffering);
     }
@@ -192,10 +173,12 @@ export default function VideoCompareScreen() {
     const hundredths = Math.floor((s * 100) % 100)
       .toString()
       .padStart(2, "0");
-    return `${m}:${sec.toString().padStart(2, "0")}:${hundredths}`;
+    const thousandths = Math.floor((s * 1000) % 1000)
+      .toString()
+      .padStart(3, "0");
+    return `${m}:${sec.toString().padStart(2, "0")}:${hundredths}.${thousandths}`;
   };
 
-  // Replay from synced start (respecting offset) and STAY PAUSED (option B)
   const handleReplay = async () => {
     await stopPlayback();
     await syncToPosition(0);
@@ -208,12 +191,11 @@ export default function VideoCompareScreen() {
 
   const handleBack = async () => {
     await stopPlayback();
-    navigation.goBack(); // keep selection screen state & videos alive
+    navigation.goBack();
   };
 
   return (
     <View style={styles.container}>
-      {/* TOP BAR */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={handleBack}>
           <Ionicons name="chevron-back" size={28} color="#fff" />
@@ -243,15 +225,12 @@ export default function VideoCompareScreen() {
         </View>
       )}
 
-      {/* ELAPSED TIME */}
       <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
 
-      {/* VIDEO AREA WITH PINCH ZOOM */}
       <View style={styles.videoArea}>
         <GestureDetector gesture={pinch}>
           <Animated.View style={[styles.zoomContainer, zoomStyle]}>
             {!ghost ? (
-              // STACKED VIEW
               <>
                 <View style={styles.videoHalfTop}>
                   <Video
@@ -260,9 +239,7 @@ export default function VideoCompareScreen() {
                     style={styles.video}
                     resizeMode="contain"
                     useNativeControls={false}
-                    onLoadStart={() => {
-                      setLoading1(true);
-                    }}
+                    onLoadStart={() => setLoading1(true)}
                     onLoad={(status) => {
                       const s = status as AVPlaybackStatusSuccess;
                       const d =
@@ -295,9 +272,7 @@ export default function VideoCompareScreen() {
                     style={styles.video}
                     resizeMode="contain"
                     useNativeControls={false}
-                    onLoadStart={() => {
-                      setLoading2(true);
-                    }}
+                    onLoadStart={() => setLoading2(true)}
                     onLoad={() => {
                       setLoading2(false);
                       setReady2(true);
@@ -317,7 +292,6 @@ export default function VideoCompareScreen() {
                 </View>
               </>
             ) : (
-              // GHOST OVERLAY VIEW
               <View style={styles.ghostFrame}>
                 {!swapGhost ? (
                   <>
@@ -327,17 +301,8 @@ export default function VideoCompareScreen() {
                       style={styles.video}
                       resizeMode="contain"
                       useNativeControls={false}
-                      onLoadStart={() => {
-                        setLoading1(true);
-                      }}
+                      onLoadStart={() => setLoading1(true)}
                       onLoad={(status) => {
-                        const s = status as AVPlaybackStatusSuccess;
-                        const d =
-                          s.durationMillis ??
-                          s.playableDurationMillis ??
-                          duration ??
-                          1;
-                        setDuration(d);
                         setLoading1(false);
                         setReady1(true);
                       }}
@@ -353,9 +318,7 @@ export default function VideoCompareScreen() {
                       style={[styles.video, { opacity: ghostOpacity }]}
                       resizeMode="contain"
                       useNativeControls={false}
-                      onLoadStart={() => {
-                        setLoading2(true);
-                      }}
+                      onLoadStart={() => setLoading2(true)}
                       onLoad={() => {
                         setLoading2(false);
                         setReady2(true);
@@ -375,9 +338,7 @@ export default function VideoCompareScreen() {
                       style={styles.video}
                       resizeMode="contain"
                       useNativeControls={false}
-                      onLoadStart={() => {
-                        setLoading2(true);
-                      }}
+                      onLoadStart={() => setLoading2(true)}
                       onLoad={() => {
                         setLoading2(false);
                         setReady2(true);
@@ -394,17 +355,8 @@ export default function VideoCompareScreen() {
                       style={[styles.video, { opacity: ghostOpacity }]}
                       resizeMode="contain"
                       useNativeControls={false}
-                      onLoadStart={() => {
-                        setLoading1(true);
-                      }}
+                      onLoadStart={() => setLoading1(true)}
                       onLoad={(status) => {
-                        const s = status as AVPlaybackStatusSuccess;
-                        const d =
-                          s.durationMillis ??
-                          s.playableDurationMillis ??
-                          duration ??
-                          1;
-                        setDuration(d);
                         setLoading1(false);
                         setReady1(true);
                       }}
@@ -429,9 +381,7 @@ export default function VideoCompareScreen() {
         </GestureDetector>
       </View>
 
-      {/* CONTROLS BLOCK */}
       <View style={styles.controlsBlock}>
-        {/* Main playback row */}
         <View style={styles.mainRow}>
           <TouchableOpacity onPress={() => handleFrameStep("back")}>
             <Ionicons name="play-back" size={32} color="#fff" />
@@ -481,7 +431,6 @@ export default function VideoCompareScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Scrub slider (synced with offset) */}
         <Slider
           style={styles.scrubSlider}
           minimumValue={0}
@@ -493,13 +442,11 @@ export default function VideoCompareScreen() {
           thumbTintColor="#fff"
         />
 
-        {/* Ghost & restart controls */}
         <View style={styles.bottomRow}>
           <TouchableOpacity
             onPress={async () => {
               const next = !ghost;
               setGhost(next);
-              // Re-apply sync when toggling ghost
               await syncToPosition(position);
             }}
           >
@@ -514,7 +461,6 @@ export default function VideoCompareScreen() {
             onPress={async () => {
               const next = !swapGhost;
               setSwapGhost(next);
-              // Re-apply sync when swapping
               await syncToPosition(position);
             }}
           >
@@ -530,7 +476,6 @@ export default function VideoCompareScreen() {
   );
 }
 
-// STYLES
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -598,7 +543,7 @@ const styles = StyleSheet.create({
   },
   ghostFrame: {
     width: SCREEN_WIDTH * 0.96,
-    height: SCREEN_HEIGHT * 0.60,
+    height: SCREEN_HEIGHT * 0.6,
     backgroundColor: "#111",
     borderRadius: 10,
     overflow: "hidden",

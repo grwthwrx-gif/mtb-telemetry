@@ -41,9 +41,9 @@ module.exports = {
     icon: './assets/icons/psynk/icon_square_1024.png',
     userInterfaceStyle: 'dark',
 
+    // ✅ FIXED SPLASH SCREEN — removed unwanted logo flicker
     splash: {
-      image: './assets/images/psynk/splash_dark_2048.png',
-      resizeMode: 'contain',
+      image: null,
       backgroundColor: '#0B0C10'
     },
 

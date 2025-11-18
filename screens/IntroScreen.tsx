@@ -1,10 +1,6 @@
 import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
-import Animated, {
-  FadeIn,
-  FadeOut,
-  Layout,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, Layout } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -15,7 +11,7 @@ export default function IntroScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       navigation.navigate("VideoSelection" as never);
-    }, 3500); // extended intro time (3.5s)
+    }, 3500); // 3.5s intro
 
     return () => clearTimeout(timer);
   }, []);
@@ -38,10 +34,7 @@ export default function IntroScreen() {
         {/* BRAND LINE */}
         <Text style={styles.brandLine}>Connect, Compare, Compete</Text>
 
-        {/* TAGLINE */}
-        <Text style={styles.tagline}>
-          Turn your footage into fast, insightful, competitive progress.
-        </Text>
+        {/* TAGLINE REMOVED */}
       </Animated.View>
     </View>
   );
@@ -68,14 +61,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: 14,
-  },
-  tagline: {
-    fontFamily: "Orbitron",
-    fontSize: 14,
-    color: "rgba(255,255,255,0.82)",
-    textAlign: "center",
-    lineHeight: 20,
-    opacity: 0.95,
+    marginBottom: 10,
   },
 });
