@@ -19,7 +19,7 @@ import { GestureDetector, Gesture } from "react-native-gesture-handler";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const FRAME_STEP_MS = 1000 / 30;
+const FRAME_STEP_MS = 1000 / 30; // 30fps stepping
 
 export default function VideoCompareScreen() {
   const route = useRoute();
@@ -101,38 +101,6 @@ export default function VideoCompareScreen() {
     };
   }, []);
 
-  // Smooth timer: poll player1 while playing
-  useEffect(() => {
-    let interval: any = null;
-    if (isPlaying) {
-      interval = setInterval(async () => {
-        const status = (await player1.current?.getStatusAsync()) as
-          | AVPlaybackStatusSuccess
-          | undefined;
-        if (!status || !status.isLoaded) return;
-
-        const pos = status.positionMillis ?? 0;
-        const dur =
-          status.durationMillis ??
-          status.playableDurationMillis ??
-          duration ??
-          1;
-
-        setElapsed(pos);
-        setPosition(pos);
-        setDuration(dur);
-
-        if (status.didJustFinish && !status.isLooping) {
-          setIsPlaying(false);
-        }
-      }, 40); // ~25fps timer updates
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isPlaying, duration]);
-
   const stopPlayback = async () => {
     await player1.current?.pauseAsync();
     await player2.current?.pauseAsync();
@@ -170,8 +138,24 @@ export default function VideoCompareScreen() {
 
   const handleStatusUpdate1 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
+
+    const pos = status.positionMillis ?? 0;
+    const dur =
+      status.durationMillis ??
+      status.playableDurationMillis ??
+      duration ??
+      1;
+
+    setElapsed(pos);
+    setPosition(pos);
+    setDuration(dur);
+
     if (typeof status.isBuffering === "boolean") {
       setLoading1(status.isBuffering);
+    }
+
+    if (status.didJustFinish && !status.isLooping) {
+      setIsPlaying(false);
     }
   };
 
@@ -183,15 +167,16 @@ export default function VideoCompareScreen() {
   };
 
   const formatTime = (ms: number) => {
-    const totalMs = Math.floor(ms);
-    const minutes = Math.floor(totalMs / 60000);
-    const seconds = Math.floor((totalMs % 60000) / 1000);
-    const hundredths = Math.floor((totalMs % 1000) / 10)
+    const s = ms / 1000;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    const hundredths = Math.floor((s * 100) % 100)
       .toString()
       .padStart(2, "0");
-    const thousandths = (totalMs % 1000).toString().padStart(3, "0");
-
-    return `${minutes}:${seconds.toString().padStart(2, "0")}:${hundredths}.${thousandths}`;
+    const thousandths = Math.floor((s * 1000) % 1000)
+      .toString()
+      .padStart(3, "0");
+    return `${m}:${sec.toString().padStart(2, "0")}:${hundredths}.${thousandths}`;
   };
 
   const handleReplay = async () => {
@@ -211,7 +196,6 @@ export default function VideoCompareScreen() {
 
   return (
     <View style={styles.container}>
-      {/* TOP BAR */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={handleBack}>
           <Ionicons name="chevron-back" size={28} color="#fff" />
@@ -241,10 +225,8 @@ export default function VideoCompareScreen() {
         </View>
       )}
 
-      {/* ELAPSED TIMER */}
       <Text style={styles.elapsedText}>{formatTime(elapsed)}</Text>
 
-      {/* VIDEO AREA WITH PERSISTENT PINCH ZOOM */}
       <View style={styles.videoArea}>
         <GestureDetector gesture={pinch}>
           <Animated.View style={[styles.zoomContainer, zoomStyle]}>
@@ -320,7 +302,7 @@ export default function VideoCompareScreen() {
                       resizeMode="contain"
                       useNativeControls={false}
                       onLoadStart={() => setLoading1(true)}
-                      onLoad={() => {
+                      onLoad={(status) => {
                         setLoading1(false);
                         setReady1(true);
                       }}
@@ -374,7 +356,7 @@ export default function VideoCompareScreen() {
                       resizeMode="contain"
                       useNativeControls={false}
                       onLoadStart={() => setLoading1(true)}
-                      onLoad={() => {
+                      onLoad={(status) => {
                         setLoading1(false);
                         setReady1(true);
                       }}
@@ -399,7 +381,6 @@ export default function VideoCompareScreen() {
         </GestureDetector>
       </View>
 
-      {/* CONTROLS */}
       <View style={styles.controlsBlock}>
         <View style={styles.mainRow}>
           <TouchableOpacity onPress={() => handleFrameStep("back")}>
