@@ -19,6 +19,7 @@ function bumpBuildNumbers() {
   }
 
   fs.writeFileSync(versionFile, JSON.stringify(info, null, 2));
+
   console.log(
     `✅ Auto-bumped → iOS buildNumber ${info.buildNumber}, Android versionCode ${info.versionCode}`
   );
@@ -37,11 +38,14 @@ module.exports = {
     icon: "./assets/icons/psynk/icon_square_1024.png",
     userInterfaceStyle: "dark",
 
-    // Plain black native splash with NO image/logo
+    // ------------------------------------------------------------
+    // 🔥 FINAL CLEAN NO-IMAGE SPLASH (fixes flashing logo forever)
+    // ------------------------------------------------------------
     splash: {
-      backgroundColor: "#0B0C10",
+      backgroundColor: "#000000",
       resizeMode: "cover",
     },
+    // ------------------------------------------------------------
 
     assetBundlePatterns: ["**/*"],
 
