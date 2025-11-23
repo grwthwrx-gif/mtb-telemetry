@@ -1,6 +1,12 @@
 import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
-import Animated, { FadeIn, FadeOut, Layout } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  withTiming,
+  useSharedValue,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -8,35 +14,39 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 export default function IntroScreen() {
   const navigation = useNavigation();
 
+  // Fade-in of entire screen (smooth, premium)
+  const fade = useSharedValue(0);
+
   useEffect(() => {
+    fade.value = withTiming(1, { duration: 900 }); // full-screen fade in
+
     const timer = setTimeout(() => {
       navigation.navigate("VideoSelection" as never);
-    }, 3500); // 3.5s intro
+    }, 2800); // ~2.8s intro
 
     return () => clearTimeout(timer);
   }, []);
 
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+  }));
+
   return (
-    <View style={styles.container}>
-      <Animated.View
-        entering={FadeIn.duration(700)}
-        exiting={FadeOut.duration(300)}
-        layout={Layout}
-        style={styles.center}
-      >
-        {/* LOGO */}
+    <Animated.View style={[styles.container, fadeStyle]}>
+      {/* Logo */}
+      <Animated.View entering={FadeIn.duration(750)} exiting={FadeOut.duration(200)}>
         <Image
           source={require("../assets/icons/psynk/logo_transparent_512.png")}
           style={styles.logo}
           resizeMode="contain"
         />
-
-        {/* BRAND LINE */}
-        <Text style={styles.brandLine}>Connect, Compare, Compete</Text>
-
-        {/* TAGLINE REMOVED */}
       </Animated.View>
-    </View>
+
+      {/* Strapline */}
+      <Animated.View entering={FadeIn.duration(900).delay(300)}>
+        <Text style={styles.brandLine}>Connect, Compare, Compete</Text>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -47,20 +57,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  center: {
-    width: SCREEN_WIDTH * 0.84,
-    alignItems: "center",
-  },
   logo: {
-    width: 180,
-    height: 180,
+    width: 200,
+    height: 200,
     marginBottom: 24,
   },
   brandLine: {
     fontFamily: "Orbitron-Bold",
-    fontSize: 22,
+    fontSize: 24,
     color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: 10,
+    marginTop: 10,
   },
 });

@@ -16,29 +16,31 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
 const { width, height } = Dimensions.get("window");
-const FRAME_HEIGHT = Math.min(height * 0.3, 280);
+const FRAME_HEIGHT = Math.min(height * 0.30, 280);
 
-// Nudge sizes (seconds) for clear visual movement
-const SMALL_STEP = 0.05; // 50ms
-const LARGE_STEP = 0.2;  // 200ms
+// True frame-step (for ~30fps videos)
+const FRAME_STEP_SEC = 1 / 30;
 
+// UI phases for guided syncing
 type Phase = "select1" | "anchor" | "select2" | "align" | "ready";
 
 export default function VideoSelectionScreen() {
   const navigation = useNavigation();
 
   const [phase, setPhase] = useState<Phase>("select1");
-
   const [video1, setVideo1] = useState<string | null>(null);
   const [video2, setVideo2] = useState<string | null>(null);
 
   const player1 = useRef<Video>(null);
   const player2 = useRef<Video>(null);
 
+  // NEW — preparing flags (instant overlay)
+  const [preparing1, setPreparing1] = useState(false);
+  const [preparing2, setPreparing2] = useState(false);
+
+  // Video load + buffer flags
   const [loading1, setLoading1] = useState(false);
   const [loading2, setLoading2] = useState(false);
-  const [cloud1, setCloud1] = useState(false);
-  const [cloud2, setCloud2] = useState(false);
 
   const [duration1, setDuration1] = useState(0);
   const [duration2, setDuration2] = useState(0);
@@ -48,22 +50,20 @@ export default function VideoSelectionScreen() {
   const [playing2, setPlaying2] = useState(false);
 
   const [anchorTime, setAnchorTime] = useState<number | null>(null);
-  const [offset, setOffset] = useState<number>(0);
+  const [offset, setOffset] = useState(0);
 
   const [menuOpen, setMenuOpen] = useState(false);
 
   const ensurePermissions = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission required",
-        "Please enable Photo Library access in Settings."
-      );
+      Alert.alert("Permission required", "Please enable Photo Library access.");
       return false;
     }
     return true;
   };
 
+  // Select video
   const pickVideo = async (which: 1 | 2) => {
     const ok = await ensurePermissions();
     if (!ok) return;
@@ -75,32 +75,33 @@ export default function VideoSelectionScreen() {
         quality: 1,
       });
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
+      if (result.canceled || !result.assets?.length) {
         return;
       }
 
-      const asset = result.assets[0];
+      const uri = result.assets[0].uri;
 
+      // Immediately show preparing overlay
       if (which === 1) {
-        setVideo1(asset.uri);
+        setPreparing1(true);
+        setVideo1(uri);
         setPhase("anchor");
-        setLoading1(true);
-        setCloud1(!asset.fileSize);
       } else {
-        setVideo2(asset.uri);
+        setPreparing2(true);
+        setVideo2(uri);
         setPhase("align");
-        setLoading2(true);
-        setCloud2(!asset.fileSize);
       }
     } catch (e) {
       console.error(e);
       Alert.alert("Error", "Unable to select video.");
-      if (which === 1) setLoading1(false);
-      else setLoading2(false);
+      which === 1 ? setPreparing1(false) : setPreparing2(false);
     }
   };
 
+  // ------------------------------------------------------------
   // Video 1 events
+  // ------------------------------------------------------------
+
   const onLoadStart1 = () => {
     setLoading1(true);
   };
@@ -108,20 +109,25 @@ export default function VideoSelectionScreen() {
   const onLoad1 = (status: AVPlaybackStatusSuccess) => {
     setDuration1((status.durationMillis ?? 0) / 1000);
     setLoading1(false);
-    setCloud1(false);
+    setPreparing1(false); // finish preparing stage
   };
 
   const onStatus1 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
+
     const newPos = (status.positionMillis ?? 0) / 1000;
     setPos1(newPos);
     setPlaying1(!!status.isPlaying);
+
     if (typeof status.isBuffering === "boolean") {
       setLoading1(status.isBuffering);
     }
   };
 
+  // ------------------------------------------------------------
   // Video 2 events
+  // ------------------------------------------------------------
+
   const onLoadStart2 = () => {
     setLoading2(true);
   };
@@ -129,27 +135,32 @@ export default function VideoSelectionScreen() {
   const onLoad2 = (status: AVPlaybackStatusSuccess) => {
     setDuration2((status.durationMillis ?? 0) / 1000);
     setLoading2(false);
-    setCloud2(false);
+    setPreparing2(false);
   };
 
   const onStatus2 = (status: AVPlaybackStatusSuccess) => {
     if (!status.isLoaded) return;
+
     const newPos = (status.positionMillis ?? 0) / 1000;
     setPos2(newPos);
     setPlaying2(!!status.isPlaying);
+
     if (typeof status.isBuffering === "boolean") {
       setLoading2(status.isBuffering);
     }
   };
 
+  // ------------------------------------------------------------
+  // Video controls
+  // ------------------------------------------------------------
+
   const togglePlay = async (which: 1 | 2) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
     const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
-    if (!s.isLoaded) return;
-    if (s.isPlaying) {
+    if (s.isLoaded && s.isPlaying) {
       await ref.pauseAsync();
-    } else {
+    } else if (s.isLoaded) {
       await ref.playAsync();
     }
   };
@@ -159,41 +170,40 @@ export default function VideoSelectionScreen() {
     if (!ref) return;
     const clamped = Math.max(0, valueSec);
     await ref.setPositionAsync(clamped * 1000);
-    if (which === 1) setPos1(clamped);
-    else setPos2(clamped);
+    which === 1 ? setPos1(clamped) : setPos2(clamped);
   };
 
-  const nudge = async (which: 1 | 2, deltaSeconds: number) => {
+  const nudgeSmall = async (which: 1 | 2, delta: number) => {
     const ref = which === 1 ? player1.current : player2.current;
     if (!ref) return;
     const s = (await ref.getStatusAsync()) as AVPlaybackStatusSuccess;
     if (!s.isLoaded) return;
     const current = (s.positionMillis ?? 0) / 1000;
-    const next = Math.max(0, current + deltaSeconds);
+    const next = Math.max(0, current + delta);
     await ref.setPositionAsync(next * 1000);
-    if (which === 1) setPos1(next);
-    else setPos2(next);
+    which === 1 ? setPos1(next) : setPos2(next);
   };
 
+  // Confirm sync anchor
   const confirmAnchor = async () => {
     if (!player1.current) return;
     const s = (await player1.current.getStatusAsync()) as AVPlaybackStatusSuccess;
     if (!s.isLoaded) return;
-    const t = (s.positionMillis ?? 0) / 1000;
-    setAnchorTime(t);
+    setAnchorTime((s.positionMillis ?? 0) / 1000);
     setPhase("select2");
   };
 
+  // Confirm alignment
   const confirmAlign = async () => {
     if (!player2.current || anchorTime == null) return;
     const s = (await player2.current.getStatusAsync()) as AVPlaybackStatusSuccess;
     if (!s.isLoaded) return;
     const t = (s.positionMillis ?? 0) / 1000;
-    const off = t - anchorTime;
-    setOffset(off);
+    setOffset(t - anchorTime);
     setPhase("ready");
   };
 
+  // Go to compare
   const goCompare = () => {
     if (!video1 || !video2) {
       Alert.alert("Select videos", "Please select and sync both runs first.");
@@ -201,22 +211,19 @@ export default function VideoSelectionScreen() {
     }
     navigation.navigate(
       "VideoCompare" as never,
-      {
-        video1,
-        video2,
-        offset,
-      } as never
+      { video1, video2, offset } as never
     );
   };
 
+  // Reset flow
   const reset = () => {
     setPhase("select1");
     setVideo1(null);
     setVideo2(null);
+    setPreparing1(false);
+    setPreparing2(false);
     setLoading1(false);
     setLoading2(false);
-    setCloud1(false);
-    setCloud2(false);
     setDuration1(0);
     setDuration2(0);
     setPos1(0);
@@ -225,37 +232,46 @@ export default function VideoSelectionScreen() {
     setPlaying2(false);
     setAnchorTime(null);
     setOffset(0);
+    setMenuOpen(false);
   };
 
-  const insideText = (text: string) => (
+  // ------------------------------------------------------------
+  // Fine frame controls (already working well)
+  // ------------------------------------------------------------
+
+  const FineControls = ({ which }: { which: 1 | 2 }) => (
+    <View style={styles.fineRow}>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -10 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>-10f</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudgeSmall(which, -1 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>-1f</Text>
+      </TouchableOpacity>
+
+      <View style={{ width: 8 }} />
+
+      <TouchableOpacity onPress={() => nudgeSmall(which, 1 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>+1f</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => nudgeSmall(which, 10 * FRAME_STEP_SEC)}>
+        <Text style={styles.fineBtn}>+10f</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const overlayHint = (text: string) => (
     <View style={styles.overlayHint}>
       <Text style={styles.overlayHintText}>{text}</Text>
     </View>
   );
 
-  const renderNudgeControls = (which: 1 | 2) => (
-    <View style={styles.nudgeRow}>
-      <TouchableOpacity onPress={() => nudge(which, -LARGE_STEP)}>
-        <Ionicons name="play-back-circle" size={26} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, -SMALL_STEP)}>
-        <Ionicons name="play-back" size={24} color="#fff" />
-      </TouchableOpacity>
-
-      <View style={{ width: 16 }} />
-
-      <TouchableOpacity onPress={() => nudge(which, SMALL_STEP)}>
-        <Ionicons name="play-forward" size={24} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => nudge(which, LARGE_STEP)}>
-        <Ionicons name="play-forward-circle" size={26} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
+  // ------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar */}
+      {/* Top Bar */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -274,7 +290,9 @@ export default function VideoSelectionScreen() {
         </View>
       )}
 
-      {/* VIDEO 1 BLOCK */}
+      {/* ------------------------------------------------------------
+          VIDEO 1 BLOCK
+      ------------------------------------------------------------ */}
       <View style={styles.block}>
         <TouchableOpacity
           activeOpacity={0.9}
@@ -297,20 +315,20 @@ export default function VideoSelectionScreen() {
                   onStatus1(s as AVPlaybackStatusSuccess)
                 }
               />
-              {(loading1 || cloud1) && (
+
+              {(preparing1 || loading1) && (
                 <View style={styles.loadingOverlay}>
                   <ActivityIndicator size="large" color="#fff" />
-                  <Text style={styles.loadingText}>
-                    {cloud1 ? "Fetching from iCloud…" : "Loading…"}
-                  </Text>
+                  <Text style={styles.loadingText}>Preparing video…</Text>
                 </View>
               )}
-              {phase === "anchor" && !loading1 &&
-                insideText("Scrub or nudge to your anchor frame, then ✓")}
+
+              {phase === "anchor" && !preparing1 && !loading1 &&
+                overlayHint("Scrub to your anchor frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>
-              <Ionicons name="film" size={40} color="#999" />
+              <Ionicons name="film" size={38} color="#999" />
               <Text style={styles.placeholderText}>Select first run</Text>
             </View>
           )}
@@ -324,11 +342,13 @@ export default function VideoSelectionScreen() {
               maximumValue={duration1 || 1}
               value={pos1}
               onValueChange={(v) => scrubTo(1, v)}
+              thumbTintColor="#fff"
               minimumTrackTintColor="#fff"
               maximumTrackTintColor="#444"
-              thumbTintColor="#fff"
             />
-            {renderNudgeControls(1)}
+
+            <FineControls which={1} />
+
             <View style={styles.controlRow}>
               <TouchableOpacity onPress={() => togglePlay(1)}>
                 <Ionicons
@@ -345,8 +365,10 @@ export default function VideoSelectionScreen() {
         )}
       </View>
 
-      {/* VIDEO 2 BLOCK */}
-      <View style={[styles.block, { marginTop: 30 }]}>
+      {/* ------------------------------------------------------------
+          VIDEO 2 BLOCK
+      ------------------------------------------------------------ */}
+      <View style={[styles.block, { marginTop: 28 }]}>
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.frame}
@@ -371,24 +393,22 @@ export default function VideoSelectionScreen() {
                   onStatus2(s as AVPlaybackStatusSuccess)
                 }
               />
-              {(loading2 || cloud2) && (
+
+              {(preparing2 || loading2) && (
                 <View style={styles.loadingOverlay}>
                   <ActivityIndicator size="large" color="#fff" />
-                  <Text style={styles.loadingText}>
-                    {cloud2 ? "Fetching from iCloud…" : "Loading…"}
-                  </Text>
+                  <Text style={styles.loadingText}>Preparing video…</Text>
                 </View>
               )}
-              {phase === "align" && !loading2 &&
-                insideText("Match this to the top video, then ✓")}
+
+              {phase === "align" && !preparing2 && !loading2 &&
+                overlayHint("Scrub to match the top frame, then ✓")}
             </>
           ) : (
             <View style={styles.placeholder}>
               <Ionicons name="film" size={40} color="#999" />
               <Text style={styles.placeholderText}>
-                {phase === "select2"
-                  ? "Select second run"
-                  : "Tap to select second run"}
+                {phase === "select2" ? "Select second run" : "Tap to select second run"}
               </Text>
             </View>
           )}
@@ -402,11 +422,13 @@ export default function VideoSelectionScreen() {
               maximumValue={duration2 || 1}
               value={pos2}
               onValueChange={(v) => scrubTo(2, v)}
+              thumbTintColor="#fff"
               minimumTrackTintColor="#fff"
               maximumTrackTintColor="#444"
-              thumbTintColor="#fff"
             />
-            {renderNudgeControls(2)}
+
+            <FineControls which={2} />
+
             <View style={styles.controlRow}>
               <TouchableOpacity onPress={() => togglePlay(2)}>
                 <Ionicons
@@ -432,6 +454,10 @@ export default function VideoSelectionScreen() {
     </SafeAreaView>
   );
 }
+
+// ------------------------------------------------------------
+// STYLES
+// ------------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: {
@@ -467,7 +493,7 @@ const styles = StyleSheet.create({
   },
   block: {
     alignItems: "center",
-    marginTop: 26,
+    marginTop: 24,
   },
   frame: {
     width: Math.min(width * 0.94, 720),
@@ -488,21 +514,37 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: "#aaa",
-    marginTop: 8,
+    marginTop: 6,
   },
+
+  // 🆕 Dark in-frame loading overlay
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 6,
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+
   overlayHint: {
     position: "absolute",
     bottom: 8,
     alignSelf: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   overlayHintText: {
     color: "#fff",
     fontSize: 13,
   },
+
   slider: {
     width: "90%",
     marginTop: 12,
@@ -511,28 +553,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 26,
-    marginTop: 8,
+    marginTop: 10,
   },
-  nudgeRow: {
+  fineRow: {
     flexDirection: "row",
     justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 8,
+    gap: 10,
+    marginTop: 6,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  loadingText: {
+  fineBtn: {
     color: "#fff",
-    marginTop: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 8,
   },
   psynkButton: {
     alignSelf: "center",
-    marginTop: 20,
+    marginTop: 22,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 18,
